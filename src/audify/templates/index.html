@@ -97,6 +97,7 @@
       .app-shell {
         display: grid;
         align-items: start;
+        align-content: start;
         grid-template-columns: 280px minmax(0, 1fr);
         gap: 28px;
         width: min(1440px, 100%);
@@ -125,10 +126,28 @@
         align-items: center;
         gap: 11px;
         margin: 0 8px 30px;
+        padding: 0;
+        border: 0;
+        background: transparent;
         color: #f2f5f8;
+        font: inherit;
         font-size: 20px;
         font-weight: 750;
         letter-spacing: -0.04em;
+        text-align: left;
+      }
+
+      .brand:hover:not(:disabled) {
+        border-color: transparent;
+        background: transparent;
+      }
+
+      .sidebar.is-collapsed {
+        padding-bottom: 16px;
+      }
+
+      .sidebar.is-collapsed .brand {
+        margin-bottom: 0;
       }
 
       .brand-mark {
@@ -183,6 +202,12 @@
         margin-top: 22px;
         accent-color: var(--accent);
         color-scheme: dark;
+        transition: --ambient-color 1.2s ease;
+      }
+
+      audio::-webkit-media-controls-panel {
+        background-color: var(--ambient-color);
+        transition: background-color 1.2s ease;
       }
 
       .workspace {
@@ -190,27 +215,6 @@
         flex-direction: column;
         min-width: 0;
         gap: 22px;
-        padding: 8px 0;
-      }
-
-      .topbar {
-        display: flex;
-        align-items: end;
-        justify-content: space-between;
-        gap: 24px;
-        padding: 4px 2px;
-        min-height: 52px;
-      }
-
-      .topbar h1 {
-        margin: 0;
-        font-size: clamp(24px, 3vw, 32px);
-        letter-spacing: -0.045em;
-      }
-
-      .topbar p {
-        margin: 4px 0 0;
-        color: var(--muted);
       }
 
       #url-form {
@@ -444,7 +448,7 @@
       @media (max-width: 640px) {
         .app-shell {
           grid-template-columns: 1fr;
-          gap: 16px;
+          gap: 8px;
           padding: 14px;
         }
 
@@ -456,6 +460,10 @@
           margin: 0 4px 18px;
         }
 
+        .sidebar.is-collapsed .brand {
+          margin: 0 4px;
+        }
+
         #saved-playlists {
           max-height: 180px;
         }
@@ -465,14 +473,8 @@
         }
 
         .workspace {
-          gap: 14px;
+          gap: 8px;
           padding: 0;
-        }
-
-        .topbar {
-          align-items: stretch;
-          flex-direction: column;
-          gap: 14px;
         }
 
         #url-form {
@@ -508,39 +510,40 @@
   </head>
   <body>
     <main class="app-shell">
-      <aside class="sidebar" aria-labelledby="saved-heading">
-        <div class="brand"><span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi</div>
-        <section class="saved-library" aria-labelledby="saved-heading">
-          <p class="sidebar-label">Your library</p>
-          <h2 id="saved-heading">Saved playlists</h2>
-          <p id="saved-status" role="status" aria-live="polite"></p>
-          <ul id="saved-playlists"></ul>
-          <p class="sidebar-note">Your playlists are saved on this device.</p>
-        </section>
-        <hr class="sidebar-divider">
-        <h2 class="add-playlist-heading">Add playlist</h2>
-        <form id="url-form">
-          <input
-            id="url"
-            name="url"
-            type="url"
-            placeholder="Paste a YouTube URL"
-            aria-label="YouTube playlist or video URL"
-            required
-          >
-          <div class="sidebar-actions">
-            <button id="load-button" type="submit">Load</button>
-            <button id="save-button" type="button" disabled>Save playlist</button>
-          </div>
-        </form>
+      <aside class="sidebar" aria-label="Playlist library">
+        <button
+          id="sidebar-toggle"
+          class="brand"
+          type="button"
+          aria-expanded="true"
+          aria-controls="sidebar-content"
+        ><span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi</button>
+        <div id="sidebar-content">
+          <section class="saved-library" aria-label="Saved playlists">
+            <p class="sidebar-label">Your library</p>
+            <p id="saved-status" role="status" aria-live="polite"></p>
+            <ul id="saved-playlists"></ul>
+            <p class="sidebar-note">Your playlists are saved on this device.</p>
+          </section>
+          <hr class="sidebar-divider">
+          <h2 class="add-playlist-heading">Add playlist</h2>
+          <form id="url-form">
+            <input
+              id="url"
+              name="url"
+              type="url"
+              placeholder="Paste a YouTube URL"
+              aria-label="YouTube playlist or video URL"
+              required
+            >
+            <div class="sidebar-actions">
+              <button id="load-button" type="submit">Load</button>
+              <button id="save-button" type="button" disabled>Save playlist</button>
+            </div>
+          </form>
+        </div>
       </aside>
       <section class="workspace" aria-label="Audio player">
-        <header class="topbar">
-          <div>
-            <h1>Listen</h1>
-            <p>Play a YouTube playlist or video.</p>
-          </div>
-        </header>
         <section class="player-card" aria-label="Player controls">
           <div class="now-playing">
             <img id="current-thumbnail" alt="" aria-hidden="true" hidden>
@@ -569,6 +572,9 @@
     </main>
     <script>
       const form = document.querySelector("#url-form");
+      const sidebar = document.querySelector(".sidebar");
+      const sidebarToggle = document.querySelector("#sidebar-toggle");
+      const sidebarContent = document.querySelector("#sidebar-content");
       const input = document.querySelector("#url");
       const loadButton = document.querySelector("#load-button");
       const previousButton = document.querySelector("#previous-button");
@@ -595,9 +601,18 @@
       let currentPlaylistTitle = "";
       let canSaveCurrentPlaylist = false;
 
+      sidebarToggle.addEventListener("click", () => {
+        const expanded = sidebarToggle.getAttribute("aria-expanded") === "true";
+        sidebarToggle.setAttribute("aria-expanded", String(!expanded));
+        sidebar.classList.toggle("is-collapsed", expanded);
+        sidebarContent.hidden = expanded;
+      });
+
       function shiftAmbientColor() {
         ambientColorIndex = (ambientColorIndex + 1) % ambientColors.length;
-        document.body.style.setProperty("--ambient-color", ambientColors[ambientColorIndex]);
+        const ambientColor = ambientColors[ambientColorIndex];
+        document.body.style.setProperty("--ambient-color", ambientColor);
+        player.style.setProperty("--ambient-color", ambientColor);
       }
 
       function selectTrack(index) {

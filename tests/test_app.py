@@ -19,8 +19,14 @@ def test_homepage_renders_player():
 
     assert response.status_code == 200
     assert b"<title>Bragi</title>" in response.data
-    assert '<span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi'.encode() in response.data
+    assert '<span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi</button>'.encode() in response.data
+    assert b'id="sidebar-toggle"' in response.data
+    assert b'aria-expanded="true"' in response.data
+    assert b'aria-controls="sidebar-content"' in response.data
+    assert b'const sidebarContent = document.querySelector("#sidebar-content");' in response.data
+    assert b'sidebarContent.hidden = expanded;' in response.data
     assert b"@property --ambient-color" in response.data
+    assert b"inherits: false;" in response.data
     assert b"transition: --ambient-color 1.2s ease;" in response.data
     assert b"shiftAmbientColor();" in response.data
     assert b"function selectTrack(index)" in response.data
@@ -32,13 +38,24 @@ def test_homepage_renders_player():
     assert b'class="app-shell"' in response.data
     assert b'class="sidebar"' in response.data
     assert b'class="workspace"' in response.data
+    assert b"align-content: start;" in response.data
+    assert b"padding: 8px 0;" not in response.data
+    assert b"<h1>Listen</h1>" not in response.data
+    assert b"Play a YouTube playlist or video." not in response.data
     assert b"align-items: start;" in response.data
     assert b".saved-library {\n        flex: none;" in response.data
     assert b".queue-card {\n        display: flex;\n        flex: none;" in response.data
     assert b"min-height: 220px;" not in response.data
     assert b"max-height: 360px;" in response.data
     assert b"max-height: 52vh;" not in response.data
+    assert b"audio::-webkit-media-controls-panel {" in response.data
+    assert b"background-color: var(--ambient-color);" in response.data
+    assert b"transition: --ambient-color 1.2s ease;" in response.data
+    assert b'player.style.setProperty("--ambient-color", ambientColor);' in response.data
     assert response.data.index(b'class="sidebar"') < response.data.index(b'class="workspace"')
+    assert b'<section class="saved-library" aria-label="Saved playlists">' in response.data
+    assert b'<h2 id="saved-heading">Saved playlists</h2>' not in response.data
+    assert b'id="saved-status" role="status" aria-live="polite"' in response.data
     assert response.data.index(b'id="saved-playlists"') < response.data.index(b'class="sidebar-divider"')
     assert response.data.index(b'class="sidebar-divider"') < response.data.index(b'id="url-form"')
     assert response.data.index(b'id="url-form"') < response.data.index(b'class="workspace"')
@@ -46,6 +63,8 @@ def test_homepage_renders_player():
     assert b'class="player-card"' in response.data
     assert b'class="queue-card"' in response.data
     assert b"@media (max-width: 640px)" in response.data
+    assert b"grid-template-columns: 1fr;\n          gap: 8px;" in response.data
+    assert b".workspace {\n          gap: 8px;\n          padding: 0;" in response.data
     assert b'id="current-thumbnail"' in response.data
     assert b'<audio id="player" controls></audio>' in response.data
     assert b'id="saved-playlists"' in response.data
