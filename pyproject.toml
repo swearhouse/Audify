@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audify"
+version = "0.1.0"
+description = "A small LAN-hosted YouTube audio playback proof of concept"
+requires-python = ">=3.10"
+dependencies = [
+    "Flask>=3.0,<4.0",
+    "yt-dlp>=2024.1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0,<9.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+audify = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Audify</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0b0e13;
+        color: #edf1f7;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        --surface: #121720;
+        --surface-raised: #171e29;
+        --border: #252e3c;
+        --muted: #8d9aab;
+        --accent: #8de0bd;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        min-height: 100vh;
+        margin: 0;
+        background: radial-gradient(ellipse at 78% 0%, #18232a 0, #0b0e13 48rem);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      form {
+        display: flex;
+        gap: 0.6rem;
+      }
+
+      input {
+        min-width: 0;
+        flex: 1;
+        padding: 0.75rem 0.9rem;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        outline: none;
+        background: #0f141c;
+        color: #edf1f7;
+        font: inherit;
+      }
+
+      input:focus {
+        border-color: #4a8d75;
+        box-shadow: 0 0 0 3px #8de0bd1a;
+      }
+
+      input::placeholder {
+        color: #697587;
+      }
+
+      button {
+        min-height: 40px;
+        padding: 0.6rem 0.9rem;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: #1b2430;
+        color: #e9eef5;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 120ms ease, border-color 120ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        border-color: #3b4a5d;
+        background: #242f3d;
+      }
+
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.42;
+      }
+
+      .app-shell {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 28px;
+        width: min(1440px, 100%);
+        min-height: 100vh;
+        margin: 0 auto;
+        padding: 28px;
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        padding: 22px 16px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: #10151de8;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin: 0 8px 30px;
+        color: #f2f5f8;
+        font-size: 20px;
+        font-weight: 750;
+        letter-spacing: -0.04em;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 11px;
+        background: #8de0bd;
+        color: #102019;
+        font-size: 16px;
+        letter-spacing: 0;
+      }
+
+      .sidebar h2,
+      .queue-heading h2 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: -0.02em;
+      }
+
+      .sidebar-label {
+        margin: 0 8px 9px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      #saved-status {
+        min-height: 1.5em;
+        margin: 4px 8px 12px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      audio {
+        width: 100%;
+        margin-top: 22px;
+        accent-color: var(--accent);
+        color-scheme: dark;
+      }
+
+      .workspace {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        gap: 22px;
+        padding: 8px 0;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 4px 2px;
+        min-height: 52px;
+      }
+
+      .topbar h1 {
+        margin: 0;
+        font-size: clamp(24px, 3vw, 32px);
+        letter-spacing: -0.045em;
+      }
+
+      .topbar p {
+        margin: 4px 0 0;
+        color: var(--muted);
+      }
+
+      #url-form {
+        display: grid;
+        width: 100%;
+        gap: 10px;
+        margin: 0 0 22px;
+      }
+
+      #url {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.7rem 0.65rem;
+        font-size: 12px;
+      }
+
+      .sidebar-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .sidebar-actions button {
+        min-width: 0;
+        flex: 1;
+      }
+
+      #load-button,
+      #save-button {
+        border-color: #8de0bd;
+        background: var(--accent);
+        color: #12221b;
+      }
+
+      #load-button:hover:not(:disabled),
+      #save-button:hover:not(:disabled) {
+        border-color: #a9efd1;
+        background: #a9efd1;
+      }
+
+      .player-card,
+      .queue-card {
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: linear-gradient(145deg, #151c26, #11161e);
+      }
+
+      .player-card {
+        padding: clamp(20px, 4vw, 34px);
+      }
+
+      .eyebrow {
+        margin: 0 0 5px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .now-playing {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        min-width: 0;
+      }
+
+      #current-thumbnail {
+        display: block;
+        width: 104px;
+        height: 78px;
+        flex: none;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #0c1117;
+        object-fit: cover;
+      }
+
+      #current-thumbnail[hidden] {
+        display: none;
+      }
+
+      .now-playing-info {
+        min-width: 0;
+      }
+
+      #status {
+        min-height: 1.5em;
+        margin: 0;
+        overflow-wrap: anywhere;
+        color: #c7d0dc;
+        font-size: 15px;
+      }
+
+      .player-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 20px;
+      }
+
+      #playback-controls {
+        display: flex;
+        gap: 8px;
+      }
+
+      #randomize-button {
+        white-space: nowrap;
+      }
+
+      .queue-card {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 220px;
+        padding: 22px;
+      }
+
+      .queue-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      #playlist-title {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 13px;
+        text-overflow: ellipsis;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      #tracks,
+      #saved-playlists {
+        display: grid;
+        gap: 5px;
+        max-height: 52vh;
+        overflow-y: auto;
+        padding: 0;
+        list-style: none;
+        scrollbar-color: #354152 transparent;
+        scrollbar-width: thin;
+      }
+
+      #tracks {
+        margin: 0;
+      }
+
+      #saved-playlists {
+        margin: 0;
+      }
+
+      #tracks button,
+      #saved-playlists button {
+        width: 100%;
+        text-align: left;
+      }
+
+      #tracks button {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-color: transparent;
+        background: transparent;
+        color: #aeb9c8;
+        font-weight: 500;
+      }
+
+      #tracks button::before {
+        width: 22px;
+        color: #738195;
+        content: attr(data-track-number);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      #tracks button[aria-current="true"] {
+        border-color: #283a36;
+        background: #17251f;
+        color: #b8f0d5;
+      }
+
+      #tracks button[aria-current="true"]::before {
+        color: var(--accent);
+      }
+
+      #saved-playlists li {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      #saved-playlists li button:first-child {
+        width: auto;
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        border-color: transparent;
+        background: transparent;
+        color: #bec8d5;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #saved-playlists li button:last-child {
+        width: auto;
+        flex: none;
+        min-height: 34px;
+        padding: 0.35rem 0.6rem;
+        color: #8996a8;
+        font-size: 12px;
+      }
+
+      .sidebar-note {
+        margin: auto 8px 0;
+        padding-top: 20px;
+        color: #788597;
+        font-size: 12px;
+      }
+
+      @media (max-width: 820px) {
+        .app-shell {
+          grid-template-columns: 230px minmax(0, 1fr);
+          gap: 18px;
+          padding: 18px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .app-shell {
+          grid-template-columns: 1fr;
+          gap: 16px;
+          padding: 14px;
+        }
+
+        .sidebar {
+          padding: 16px;
+        }
+
+        .brand {
+          margin: 0 4px 18px;
+        }
+
+        #saved-playlists {
+          max-height: 180px;
+        }
+
+        .sidebar-note {
+          display: none;
+        }
+
+        .workspace {
+          gap: 14px;
+          padding: 0;
+        }
+
+        .topbar {
+          align-items: stretch;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        #url-form {
+          width: 100%;
+        }
+
+        .player-card,
+        .queue-card {
+          border-radius: 15px;
+          padding: 18px;
+        }
+
+        .player-controls {
+          align-items: stretch;
+          flex-wrap: wrap;
+        }
+
+        #current-thumbnail {
+          width: 88px;
+          height: 66px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-labelledby="saved-heading">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">A</span>Audify</div>
+        <form id="url-form">
+          <input
+            id="url"
+            name="url"
+            type="url"
+            placeholder="Paste a YouTube URL"
+            aria-label="YouTube playlist or video URL"
+            required
+          >
+          <div class="sidebar-actions">
+            <button id="load-button" type="submit">Load</button>
+            <button id="save-button" type="button" disabled>Save playlist</button>
+          </div>
+        </form>
+        <p class="sidebar-label">Your library</p>
+        <h2 id="saved-heading">Saved playlists</h2>
+        <p id="saved-status" role="status" aria-live="polite"></p>
+        <ul id="saved-playlists"></ul>
+        <p class="sidebar-note">Your playlists are saved on this device.</p>
+      </aside>
+      <section class="workspace" aria-label="Audio player">
+        <header class="topbar">
+          <div>
+            <h1>Listen</h1>
+            <p>Play a YouTube playlist or video.</p>
+          </div>
+        </header>
+        <section class="player-card" aria-label="Player controls">
+          <div class="now-playing">
+            <img id="current-thumbnail" alt="" aria-hidden="true" hidden>
+            <div class="now-playing-info">
+              <p class="eyebrow">Now playing</p>
+              <p id="status" role="status" aria-live="polite">Load a playlist to start listening.</p>
+            </div>
+          </div>
+          <audio id="player" controls></audio>
+          <div class="player-controls">
+            <div id="playback-controls">
+              <button id="previous-button" type="button" disabled>Previous</button>
+              <button id="next-button" type="button" disabled>Next</button>
+            </div>
+          </div>
+        </section>
+        <section class="queue-card" aria-labelledby="queue-heading">
+          <div class="queue-heading">
+            <h2 id="queue-heading">Playlist</h2>
+            <span id="playlist-title">No playlist loaded</span>
+            <button id="randomize-button" type="button" disabled>Randomize</button>
+          </div>
+          <ol id="tracks" aria-label="Playlist tracks"></ol>
+        </section>
+      </section>
+    </main>
+    <script>
+      const form = document.querySelector("#url-form");
+      const input = document.querySelector("#url");
+      const loadButton = document.querySelector("#load-button");
+      const previousButton = document.querySelector("#previous-button");
+      const nextButton = document.querySelector("#next-button");
+      const randomizeButton = document.querySelector("#randomize-button");
+      const trackList = document.querySelector("#tracks");
+      const status = document.querySelector("#status");
+      const playlistTitle = document.querySelector("#playlist-title");
+      const savedStatus = document.querySelector("#saved-status");
+      const savedList = document.querySelector("#saved-playlists");
+      const saveButton = document.querySelector("#save-button");
+      const player = document.querySelector("#player");
+      const maxAudioLoadRetries = 2;
+      const audioLoadError = "The audio stream could not be loaded.";
+      const currentThumbnail = document.querySelector("#current-thumbnail");
+      let tracks = [];
+      let currentIndex = -1;
+      let playbackRequest = 0;
+      let playlistLoadRequest = 0;
+      let cancelMetadataWait = null;
+      let currentPlaylistUrl = "";
+      let currentPlaylistTitle = "";
+      let canSaveCurrentPlaylist = false;
+
+      function renderTracks() {
+        trackList.replaceChildren();
+        tracks.forEach((track, index) => {
+          const item = document.createElement("li");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = `${index + 1}. ${track.title}`;
+          button.setAttribute("data-track-number", String(index + 1));
+          button.setAttribute("aria-current", String(index === currentIndex));
+          button.addEventListener("click", () => playTrack(index));
+          item.append(button);
+          trackList.append(item);
+        });
+        previousButton.disabled = currentIndex <= 0;
+        nextButton.disabled = currentIndex < 0 || currentIndex >= tracks.length - 1;
+        randomizeButton.disabled = tracks.length < 2;
+      }
+
+      function clearPlayer() {
+        if (cancelMetadataWait) {
+          cancelMetadataWait();
+        }
+        player.pause();
+        player.removeAttribute("src");
+        player.load();
+      }
+
+      function waitForMetadata() {
+        return new Promise((resolve, reject) => {
+          function cleanup() {
+            player.removeEventListener("loadedmetadata", onLoadedMetadata);
+            player.removeEventListener("error", onError);
+            if (cancelMetadataWait === cancel) {
+              cancelMetadataWait = null;
+            }
+          }
+
+          function onLoadedMetadata() {
+            cleanup();
+            resolve();
+          }
+
+          function onError() {
+            cleanup();
+            reject(new Error("The audio stream could not be loaded."));
+          }
+
+          function cancel() {
+            cleanup();
+            reject(new Error("Playback was replaced."));
+          }
+
+          cancelMetadataWait = cancel;
+          player.addEventListener("loadedmetadata", onLoadedMetadata);
+          player.addEventListener("error", onError);
+        });
+      }
+
+      async function playTrack(index, retryCount = 0) {
+        if (index < 0 || index >= tracks.length) {
+          return;
+        }
+        const track = tracks[index];
+        const requestId = ++playbackRequest;
+        currentIndex = index;
+        renderTracks();
+        clearPlayer();
+        currentThumbnail.hidden = true;
+        currentThumbnail.removeAttribute("src");
+        if (track.thumbnail_url) {
+          currentThumbnail.dataset.thumbnailUrl = track.thumbnail_url;
+          currentThumbnail.onload = () => {
+            if (currentThumbnail.dataset.thumbnailUrl === track.thumbnail_url) {
+              currentThumbnail.hidden = false;
+            }
+          };
+          currentThumbnail.onerror = () => {
+            if (currentThumbnail.dataset.thumbnailUrl === track.thumbnail_url) {
+              currentThumbnail.hidden = true;
+            }
+          };
+          currentThumbnail.src = track.thumbnail_url;
+        } else {
+          delete currentThumbnail.dataset.thumbnailUrl;
+          currentThumbnail.onload = null;
+          currentThumbnail.onerror = null;
+        }
+        status.textContent = `Resolving ${track.title}…`;
+
+        try {
+          const response = await fetch("/api/resolve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: track.url }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not resolve that track.");
+          }
+          if (requestId !== playbackRequest) {
+            return;
+          }
+
+          const metadataLoaded = waitForMetadata();
+          player.src = result.audio_url;
+          player.load();
+          await metadataLoaded;
+          if (requestId !== playbackRequest) {
+            return;
+          }
+          player.currentTime = 0;
+          await player.play();
+          if (requestId === playbackRequest) {
+            status.textContent = result.title;
+          }
+        } catch (error) {
+          if (requestId === playbackRequest) {
+            if (error.message === audioLoadError && retryCount < maxAudioLoadRetries) {
+              status.textContent = `Retrying ${track.title} (${retryCount + 1}/${maxAudioLoadRetries})…`;
+              await playTrack(index, retryCount + 1);
+            } else if (error.message === audioLoadError && index < tracks.length - 1) {
+              await playTrack(index + 1);
+            } else {
+              status.textContent = `${track.title}: ${error.message}`;
+            }
+          }
+        }
+      }
+
+      randomizeButton.addEventListener("click", () => {
+        const currentTrack = tracks[currentIndex];
+        for (let index = tracks.length - 1; index > 0; index -= 1) {
+          const randomIndex = Math.floor(Math.random() * (index + 1));
+          [tracks[index], tracks[randomIndex]] = [tracks[randomIndex], tracks[index]];
+        }
+        currentIndex = currentTrack ? tracks.indexOf(currentTrack) : -1;
+        renderTracks();
+      });
+
+      async function loadPlaylist(url, { allowSave = false } = {}) {
+        url = url.trim();
+        const loadRequestId = ++playlistLoadRequest;
+        ++playbackRequest;
+        clearPlayer();
+        tracks = [];
+        currentIndex = -1;
+        currentPlaylistUrl = "";
+        currentPlaylistTitle = "";
+        canSaveCurrentPlaylist = false;
+        playlistTitle.textContent = "Loading playlist…";
+        saveButton.disabled = true;
+        renderTracks();
+        loadButton.disabled = true;
+        status.textContent = "Loading playlist…";
+
+        try {
+          const response = await fetch("/api/playlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not load that playlist.");
+          }
+          if (loadRequestId !== playlistLoadRequest) {
+            return;
+          }
+
+          tracks = result.tracks;
+          currentPlaylistUrl = url;
+          currentPlaylistTitle = result.title;
+          canSaveCurrentPlaylist = allowSave;
+          playlistTitle.textContent = `${result.title} (${tracks.length} songs)`;
+          saveButton.disabled = !canSaveCurrentPlaylist;
+          renderTracks();
+          status.textContent = `${result.title} — ${tracks.length} tracks`;
+          await playTrack(0);
+        } catch (error) {
+          if (loadRequestId === playlistLoadRequest) {
+            playlistTitle.textContent = "No playlist loaded";
+            status.textContent = error.message;
+          }
+        } finally {
+          if (loadRequestId === playlistLoadRequest) {
+            loadButton.disabled = false;
+          }
+        }
+      }
+
+      async function refreshSavedPlaylists() {
+        const response = await fetch("/api/saved-playlists");
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || "Could not load saved playlists.");
+        }
+
+        savedList.replaceChildren();
+        result.playlists.forEach((playlist) => {
+          const item = document.createElement("li");
+          const openButton = document.createElement("button");
+          openButton.type = "button";
+          openButton.textContent = playlist.title;
+          openButton.addEventListener("click", () => loadPlaylist(playlist.url));
+
+          const removeButton = document.createElement("button");
+          removeButton.type = "button";
+          removeButton.textContent = "Remove";
+          removeButton.setAttribute("aria-label", `Remove ${playlist.title}`);
+          removeButton.addEventListener("click", () => removeSavedPlaylist(playlist.url));
+          item.append(openButton, removeButton);
+          savedList.append(item);
+        });
+        savedStatus.textContent = result.playlists.length
+          ? `${result.playlists.length} saved playlist(s).`
+          : "No saved playlists yet.";
+      }
+
+      async function removeSavedPlaylist(url) {
+        try {
+          const response = await fetch("/api/saved-playlists", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not remove the playlist.");
+          }
+          await refreshSavedPlaylists();
+        } catch (error) {
+          savedStatus.textContent = error.message;
+        }
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        loadPlaylist(input.value, { allowSave: true });
+      });
+
+      previousButton.addEventListener("click", () => playTrack(currentIndex - 1));
+      nextButton.addEventListener("click", () => playTrack(currentIndex + 1));
+      saveButton.addEventListener("click", async () => {
+        if (!canSaveCurrentPlaylist || !currentPlaylistUrl) {
+          return;
+        }
+        saveButton.disabled = true;
+        savedStatus.textContent = "Saving playlist…";
+        try {
+          const response = await fetch("/api/saved-playlists", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: currentPlaylistTitle,
+              url: currentPlaylistUrl,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not save the playlist.");
+          }
+          await refreshSavedPlaylists();
+          savedStatus.textContent = result.updated
+            ? "Updated saved playlist."
+            : "Playlist saved.";
+        } catch (error) {
+          savedStatus.textContent = error.message;
+        } finally {
+          saveButton.disabled = !canSaveCurrentPlaylist;
+        }
+      });
+      player.addEventListener("ended", () => {
+        if (currentIndex < tracks.length - 1) {
+          playTrack(currentIndex + 1);
+        } else if (currentIndex >= 0) {
+          status.textContent = "Playlist finished.";
+        }
+      });
+
+      refreshSavedPlaylists().catch((error) => {
+        savedStatus.textContent = error.message;
+      });
+    </script>
+  </body>
+</html>
