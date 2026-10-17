@@ -1,1 +1,1 @@
-"""Audify local-network audio player."""
+"""Bragi local-network audio player."""

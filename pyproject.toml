@@ -3,13 +3,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audify"
+name = "bragi"
 version = "0.1.0"
-description = "A small LAN-hosted YouTube audio playback proof of concept"
+description = "Bragi, a small LAN-hosted YouTube audio playback proof of concept"
 requires-python = ">=3.10"
 dependencies = [
     "Flask>=3.0,<4.0",
     "yt-dlp>=2024.1.0",
+    "waitress>=3.0,<4.0",
 ]
 
 [project.optional-dependencies]

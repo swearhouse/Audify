@@ -1,5 +1,11 @@
+from waitress import serve
+
 from audify.app import create_app
 
 
-app = create_app()
-app.run(host="0.0.0.0", port=8000, debug=False)
+def main() -> None:
+    serve(create_app(), host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    main()

@@ -3,8 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Audify</title>
+    <title>Bragi</title>
     <style>
+      @property --ambient-color {
+        syntax: "<color>";
+        inherits: false;
+        initial-value: #18232a;
+      }
+
       :root {
         color-scheme: dark;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -24,12 +30,14 @@
       }
 
       body {
+        --ambient-color: #18232a;
         min-width: 320px;
         min-height: 100vh;
         margin: 0;
-        background: radial-gradient(ellipse at 78% 0%, #18232a 0, #0b0e13 48rem);
+        background: radial-gradient(ellipse at 78% 0%, var(--ambient-color) 0, #0b0e13 48rem);
         font-size: 14px;
         line-height: 1.5;
+        transition: --ambient-color 1.2s ease;
       }
 
       form {
@@ -88,6 +96,7 @@
 
       .app-shell {
         display: grid;
+        align-items: start;
         grid-template-columns: 280px minmax(0, 1fr);
         gap: 28px;
         width: min(1440px, 100%);
@@ -104,6 +113,11 @@
         border: 1px solid var(--border);
         border-radius: 18px;
         background: #10151de8;
+      }
+
+      .saved-library {
+        flex: none;
+        min-height: 0;
       }
 
       .brand {
@@ -125,7 +139,8 @@
         border-radius: 11px;
         background: #8de0bd;
         color: #102019;
-        font-size: 16px;
+        font-size: 30px;
+        line-height: 30px;
         letter-spacing: 0;
       }
 
@@ -134,6 +149,17 @@
         margin: 0;
         font-size: 16px;
         letter-spacing: -0.02em;
+      }
+
+      .sidebar-divider {
+        width: 100%;
+        margin: 18px 0;
+        border: 0;
+        border-top: 1px solid var(--border);
+      }
+
+      .sidebar .add-playlist-heading {
+        margin: 0 0 12px 8px;
       }
 
       .sidebar-label {
@@ -296,9 +322,8 @@
 
       .queue-card {
         display: flex;
-        flex: 1;
+        flex: none;
         flex-direction: column;
-        min-height: 220px;
         padding: 22px;
       }
 
@@ -325,7 +350,7 @@
       #saved-playlists {
         display: grid;
         gap: 5px;
-        max-height: 52vh;
+        max-height: 360px;
         overflow-y: auto;
         padding: 0;
         list-style: none;
@@ -403,8 +428,7 @@
       }
 
       .sidebar-note {
-        margin: auto 8px 0;
-        padding-top: 20px;
+        margin: 12px 8px 0;
         color: #788597;
         font-size: 12px;
       }
@@ -485,7 +509,16 @@
   <body>
     <main class="app-shell">
       <aside class="sidebar" aria-labelledby="saved-heading">
-        <div class="brand"><span class="brand-mark" aria-hidden="true">A</span>Audify</div>
+        <div class="brand"><span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi</div>
+        <section class="saved-library" aria-labelledby="saved-heading">
+          <p class="sidebar-label">Your library</p>
+          <h2 id="saved-heading">Saved playlists</h2>
+          <p id="saved-status" role="status" aria-live="polite"></p>
+          <ul id="saved-playlists"></ul>
+          <p class="sidebar-note">Your playlists are saved on this device.</p>
+        </section>
+        <hr class="sidebar-divider">
+        <h2 class="add-playlist-heading">Add playlist</h2>
         <form id="url-form">
           <input
             id="url"
@@ -500,11 +533,6 @@
             <button id="save-button" type="button" disabled>Save playlist</button>
           </div>
         </form>
-        <p class="sidebar-label">Your library</p>
-        <h2 id="saved-heading">Saved playlists</h2>
-        <p id="saved-status" role="status" aria-live="polite"></p>
-        <ul id="saved-playlists"></ul>
-        <p class="sidebar-note">Your playlists are saved on this device.</p>
       </aside>
       <section class="workspace" aria-label="Audio player">
         <header class="topbar">
@@ -556,14 +584,35 @@
       const maxAudioLoadRetries = 2;
       const audioLoadError = "The audio stream could not be loaded.";
       const currentThumbnail = document.querySelector("#current-thumbnail");
+      const ambientColors = ["#241f2a", "#1e2925", "#29231f", "#202734", "#192a2a", "#27232a"];
       let tracks = [];
       let currentIndex = -1;
+      let ambientColorIndex = -1;
       let playbackRequest = 0;
       let playlistLoadRequest = 0;
       let cancelMetadataWait = null;
       let currentPlaylistUrl = "";
       let currentPlaylistTitle = "";
       let canSaveCurrentPlaylist = false;
+
+      function shiftAmbientColor() {
+        ambientColorIndex = (ambientColorIndex + 1) % ambientColors.length;
+        document.body.style.setProperty("--ambient-color", ambientColors[ambientColorIndex]);
+      }
+
+      function selectTrack(index) {
+        if (index >= 0 && index < tracks.length && index !== currentIndex) {
+          shiftAmbientColor();
+        }
+        playTrack(index);
+      }
+
+      function advanceTrack(index) {
+        if (index >= 0 && index < tracks.length && index !== currentIndex) {
+          shiftAmbientColor();
+        }
+        playTrack(index);
+      }
 
       function renderTracks() {
         trackList.replaceChildren();
@@ -574,7 +623,7 @@
           button.textContent = `${index + 1}. ${track.title}`;
           button.setAttribute("data-track-number", String(index + 1));
           button.setAttribute("aria-current", String(index === currentIndex));
-          button.addEventListener("click", () => playTrack(index));
+          button.addEventListener("click", () => selectTrack(index));
           item.append(button);
           trackList.append(item);
         });
@@ -686,7 +735,7 @@
               status.textContent = `Retrying ${track.title} (${retryCount + 1}/${maxAudioLoadRetries})…`;
               await playTrack(index, retryCount + 1);
             } else if (error.message === audioLoadError && index < tracks.length - 1) {
-              await playTrack(index + 1);
+              advanceTrack(index + 1);
             } else {
               status.textContent = `${track.title}: ${error.message}`;
             }
@@ -742,7 +791,6 @@
           saveButton.disabled = !canSaveCurrentPlaylist;
           renderTracks();
           status.textContent = `${result.title} — ${tracks.length} tracks`;
-          await playTrack(0);
         } catch (error) {
           if (loadRequestId === playlistLoadRequest) {
             playlistTitle.textContent = "No playlist loaded";
@@ -805,8 +853,8 @@
         loadPlaylist(input.value, { allowSave: true });
       });
 
-      previousButton.addEventListener("click", () => playTrack(currentIndex - 1));
-      nextButton.addEventListener("click", () => playTrack(currentIndex + 1));
+      previousButton.addEventListener("click", () => selectTrack(currentIndex - 1));
+      nextButton.addEventListener("click", () => selectTrack(currentIndex + 1));
       saveButton.addEventListener("click", async () => {
         if (!canSaveCurrentPlaylist || !currentPlaylistUrl) {
           return;
@@ -838,7 +886,7 @@
       });
       player.addEventListener("ended", () => {
         if (currentIndex < tracks.length - 1) {
-          playTrack(currentIndex + 1);
+          advanceTrack(currentIndex + 1);
         } else if (currentIndex >= 0) {
           status.textContent = "Playlist finished.";
         }

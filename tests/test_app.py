@@ -18,11 +18,29 @@ def test_homepage_renders_player():
     response = create_app().test_client().get("/")
 
     assert response.status_code == 200
+    assert b"<title>Bragi</title>" in response.data
+    assert '<span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi'.encode() in response.data
+    assert b"@property --ambient-color" in response.data
+    assert b"transition: --ambient-color 1.2s ease;" in response.data
+    assert b"shiftAmbientColor();" in response.data
+    assert b"function selectTrack(index)" in response.data
+    assert b"button.addEventListener(\"click\", () => selectTrack(index));" in response.data
+    assert b"nextButton.addEventListener(\"click\", () => selectTrack(currentIndex + 1));" in response.data
+    assert b"function advanceTrack(index)" in response.data
+    assert b"advanceTrack(currentIndex + 1);" in response.data
+    assert b"advanceTrack(index + 1);" in response.data
     assert b'class="app-shell"' in response.data
     assert b'class="sidebar"' in response.data
     assert b'class="workspace"' in response.data
+    assert b"align-items: start;" in response.data
+    assert b".saved-library {\n        flex: none;" in response.data
+    assert b".queue-card {\n        display: flex;\n        flex: none;" in response.data
+    assert b"min-height: 220px;" not in response.data
+    assert b"max-height: 360px;" in response.data
+    assert b"max-height: 52vh;" not in response.data
     assert response.data.index(b'class="sidebar"') < response.data.index(b'class="workspace"')
-    assert response.data.index(b'id="url-form"') < response.data.index(b'class="sidebar-label"')
+    assert response.data.index(b'id="saved-playlists"') < response.data.index(b'class="sidebar-divider"')
+    assert response.data.index(b'class="sidebar-divider"') < response.data.index(b'id="url-form"')
     assert response.data.index(b'id="url-form"') < response.data.index(b'class="workspace"')
     assert b"#url {\n        width: 100%;" in response.data
     assert b'class="player-card"' in response.data
@@ -38,7 +56,8 @@ def test_homepage_renders_player():
     assert b'id="tracks"' in response.data
     assert b"(${tracks.length} songs)" in response.data
     assert b"const maxAudioLoadRetries = 2;" in response.data
-    assert b"await playTrack(index + 1);" in response.data
+    assert b"advanceTrack(index + 1);" in response.data
+    assert b"await playTrack(0);" not in response.data
 
 
 def test_playlist_rejects_invalid_url():
