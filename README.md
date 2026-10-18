@@ -1,47 +1,67 @@
 # Bragi
 
-A small local-network proof of concept for playing audio from a pasted YouTube
-playlist or video URL. Loading a playlist only displays its tracks; playback
-starts when you select a track. The app displays the playlist as a clickable track list,
-with Previous and Next controls and automatic advancement. `yt-dlp` resolves
-each audio format when its track is selected, and the browser's audio player
-plays the resulting stream. The current track's YouTube thumbnail is shown
-beside its title when available. Playback belongs to the page: it continues while
-the browser is minimized and stops when the page is closed. Next stops at the
-end of the playlist; Previous always selects the preceding track. Every track
-starts at 0:00 whenever selected. Randomize shuffles the track list and
-upcoming playback order while keeping the current track selected. Loaded
-playlists can be saved to a JSON library on the host, reopened after restarting
-the app, and removed from the library. Saving the same URL again updates its
-saved title. The Save playlist button is enabled only after loading a playlist
-through the URL field's Load button. Saved playlists are stored per user in
-`instance/user_playlists.json` in the project folder. The existing shared
-`instance/playlists.json` file is left untouched and is not imported into the
-per-user libraries; users without an entry start with an empty library. The
-lightweight responsive
-interface places the saved library on the left and the player controls and
-playlist queue on the right on wider screens; it stacks them on narrow screens.
-If a track's audio stream fails to load, the player retries twice before
-automatically moving to the next track.
+Bragi is a small, self-hosted web audio player for a trusted home network.
+Paste a YouTube video or playlist URL to load its tracks, then select a track
+to play it in your browser. Bragi supports previous/next playback, shuffle,
+track thumbnails, and a saved-playlist library that is separate for each user.
+It resolves streams when you play a track; it does not download or store audio.
 
-Bragi requires a username and password to open the app or use its APIs. On the
-first login attempt, it creates `users.json` in the data directory with the
-initial accounts `admin` / `admin` and `quest` / `guest`. Edit that JSON file
-to change passwords or add and remove accounts; account changes are checked
-against active sessions on each request. The file contains plaintext passwords
-and is never returned by the app's network endpoints. Change the initial
-passwords before allowing other people to access Bragi, and restrict access to
-the data directory. Plain HTTP does not encrypt credentials in transit; use
-Bragi only on a trusted LAN or put it behind an HTTPS reverse proxy.
+Bragi requires a username and password to use the app and its APIs. It is
+intended for a trusted local network, not direct public exposure. The app uses
+HTTP by default, so login credentials are not encrypted in transit. Do not
+forward its port to the internet; use an HTTPS reverse proxy if you need remote
+access.
 
-This project does not download or store audio. Use it only for content you are
-authorized to access this way. YouTube delivery methods can change, and
-audio-only playback outside YouTube's supported player may not be supported by
-YouTube's terms.
+## User accounts
 
-## Run on Windows
+Bragi stores accounts as plaintext in `users.json`, in its data directory. On
+the first login attempt, if the file does not already exist, Bragi creates it
+with these initial accounts:
 
-Use Python 3.10 or newer:
+```json
+{
+  "users": [
+    {
+      "username": "admin",
+      "password": "admin"
+    },
+    {
+      "username": "quest",
+      "password": "guest"
+    }
+  ]
+}
+```
+
+Sign in with one of these accounts, then edit `users.json` directly on the
+server to change passwords or add/remove accounts. Keep the same JSON shape:
+each entry needs a non-empty `username` and `password`, and usernames should be
+unique. For example, change a password by editing its value, or add another
+account by adding an object to the `users` array. Save valid JSON. Changes are
+checked against active sessions on each request; removing an account signs
+that user out on their next request. Bragi does not provide an in-app user
+editor.
+
+Change both initial passwords before sharing access. Anyone who can read the
+data directory can read every password in this file. Do not commit `users.json`
+to source control or share its contents.
+
+## Data files and persistence
+
+Bragi uses a data directory for account and playlist JSON files:
+
+- `users.json` is created on the first login attempt.
+- `user_playlists.json` is created when a user first saves a playlist. It
+  contains separate playlist lists keyed by username.
+- The older shared `playlists.json`, if present, is left untouched and is not
+  imported into per-user libraries.
+
+Keep the data directory persistent and writable by the Bragi process or
+container. Back it up if you want to preserve accounts and saved playlists.
+
+## Run locally with Python
+
+Use Python 3.10 or newer. From the project folder:
 
 ```powershell
 py -m venv .venv
@@ -49,91 +69,53 @@ py -m venv .venv
 .\.venv\Scripts\python.exe -m audify
 ```
 
-Open `http://localhost:8000` on the host computer. To use it from another
-device on your home network, open `http://<host-computer-LAN-IP>:8000`.
-The server listens on all network interfaces, so only run it on a trusted
-network. The first login attempt creates `instance\users.json`; edit it to
-change the default credentials or manage accounts.
-
-## Run as a Windows service
-
-To start Bragi automatically at boot and keep it available when nobody is
-signed in, install it as a Windows service using WinSW:
-
-1. Set up Bragi from the project folder as described above. The virtual
-   environment must be at `.venv` in this folder.
-2. Download the current WinSW x64 executable from the
-   [WinSW releases page](https://github.com/winsw/winsw/releases), place it in
-   this folder, and name it `BragiService.exe`. Keep the included
-   `BragiService.xml` beside it.
-3. Open PowerShell as Administrator in this folder and run:
-
-   ```powershell
-   .\BragiService.exe install
-   .\BragiService.exe start
-   ```
-
-   The service starts automatically at boot and restarts if Bragi exits.
-   WinSW writes rolling logs to the `logs` folder.
-4. In the same elevated PowerShell window, allow port 8000 on private
-   networks only:
-
-   ```powershell
-   New-NetFirewallRule -DisplayName "Bragi (Private LAN)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 -Profile Private
-   ```
-
-5. On the host PC, open `http://localhost:8000`. Find its LAN IPv4 address
-   with `ipconfig`; other devices on the same home network can open
-   `http://<host-computer-LAN-IP>:8000`. Ensure the host network is marked
-   **Private** in Windows network settings. A DHCP reservation in your router
-   can keep the host's LAN address stable.
-
-To stop or remove the service, run these commands from an elevated PowerShell
-window in the project folder:
-
-```powershell
-.\BragiService.exe stop
-.\BragiService.exe uninstall
-```
-
-Do not allow access from Public networks or forward port 8000 through your
-router. Keep the service account's permissions to the project folder,
-especially `instance\playlists.json` and `instance\users.json`, in mind.
+Open `http://localhost:8000`. The default data directory is `instance` in the
+project folder, so the account file is `instance\users.json`. To use Bragi
+from another device on the home network, open `http://<host-LAN-IP>:8000`.
 
 ## Run with Docker Compose
 
-Install Docker Desktop for Windows and make sure its Linux container engine is
-running. From the project folder, build and start Bragi:
+Install Docker with Compose support. From the project folder:
 
-```powershell
+```bash
 docker compose up -d --build
 ```
 
-Open `http://localhost:8000` on the PC running Docker, or
-`http://<host-computer-LAN-IP>:8000` from another device on the home network.
-If port 8000 is already in use by a manually started Bragi instance or the
-Windows service, stop that instance before starting the container.
+Open `http://<host-LAN-IP>:8000` from a device on the same network. Compose
+stores Bragi data in the named `bragi-data` volume. To stop Bragi, run:
 
-View logs or stop the container with:
-
-```powershell
-docker compose logs -f
+```bash
 docker compose down
 ```
 
-Compose restarts the container automatically unless it has been explicitly
-stopped. To have Bragi return after a PC reboot, configure Docker Desktop to
-start when you sign in. The `bragi-data` volume keeps `user_playlists.json`
-and `users.json` across container removal or recreation. On CasaOS, you can
-instead mount a host folder at `/var/lib/bragi`; it will contain
-`user_playlists.json` and `users.json`. Ensure the folder is writable by the
-container's `bragi` user.
+## Run on CasaOS
 
-Allow inbound TCP port 8000 through Windows Firewall on **Private** networks
-only if other home devices cannot connect. Do not allow access from Public
-networks or forward the port through your router.
+Build Bragi's image on the CasaOS machine from the project source. For example,
+over SSH, from a suitable working directory:
+
+```bash
+sudo docker build -t bragi:latest https://github.com/swearhouse/Audify.git#main
+sudo mkdir -p /DATA/AppData/bragi-data
+```
+
+Then in CasaOS **Manual App Install**, use:
+
+- Docker image: `bragi`
+- Tag: `latest`
+- Web UI: HTTP, port `8000`, path `/`
+- Port mapping: host `8000` to container `8000`, TCP
+- Volume: `/DATA/AppData/bragi-data` to `/var/lib/bragi`
+- Restart policy: `unless-stopped`, if available
+
+After the first login attempt, edit
+`/DATA/AppData/bragi-data/users.json` on the CasaOS host to manage accounts.
+Saved playlists will be stored in
+`/DATA/AppData/bragi-data/user_playlists.json` after a user first saves one.
+The host directory must be writable by Bragi's container user.
 
 ## Tests
+
+Install the test dependency and run the suite:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[test]"
