@@ -1,6 +1,11 @@
 services:
   bragi:
     build: .
+    volumes:
+      - bragi-data:/var/lib/bragi
     ports:
       - "8000:8000"
     restart: unless-stopped
+
+volumes:
+  bragi-data:

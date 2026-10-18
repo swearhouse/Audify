@@ -21,6 +21,16 @@ playlist queue on the right on wider screens; it stacks them on narrow screens.
 If a track's audio stream fails to load, the player retries twice before
 automatically moving to the next track.
 
+Bragi requires a username and password to open the app or use its APIs. On the
+first login attempt, it creates `users.json` beside `playlists.json` with the
+initial accounts `admin` / `admin` and `quest` / `guest`. Edit that JSON file
+to change passwords or add and remove accounts; account changes are checked
+against active sessions on each request. The file contains plaintext passwords
+and is never returned by the app's network endpoints. Change the initial
+passwords before allowing other people to access Bragi, and restrict access to
+the data directory. Plain HTTP does not encrypt credentials in transit; use
+Bragi only on a trusted LAN or put it behind an HTTPS reverse proxy.
+
 This project does not download or store audio. Use it only for content you are
 authorized to access this way. YouTube delivery methods can change, and
 audio-only playback outside YouTube's supported player may not be supported by
@@ -38,8 +48,9 @@ py -m venv .venv
 
 Open `http://localhost:8000` on the host computer. To use it from another
 device on your home network, open `http://<host-computer-LAN-IP>:8000`.
-The server listens on all network interfaces and has no authentication, so
-only run it on a trusted network.
+The server listens on all network interfaces, so only run it on a trusted
+network. The first login attempt creates `instance\users.json`; edit it to
+change the default credentials or manage accounts.
 
 ## Run as a Windows service
 
@@ -82,9 +93,9 @@ window in the project folder:
 .\BragiService.exe uninstall
 ```
 
-Bragi has no authentication, so do not allow access from Public networks or
-forward port 8000 through your router. Keep the service account's permissions
-to the project folder, especially `instance\playlists.json`, in mind.
+Do not allow access from Public networks or forward port 8000 through your
+router. Keep the service account's permissions to the project folder,
+especially `instance\playlists.json` and `instance\users.json`, in mind.
 
 ## Run with Docker Compose
 
@@ -109,13 +120,14 @@ docker compose down
 
 Compose restarts the container automatically unless it has been explicitly
 stopped. To have Bragi return after a PC reboot, configure Docker Desktop to
-start when you sign in. The container has no data volume: saved playlists are
-available while it runs, but are discarded when the container is removed or
-recreated.
+start when you sign in. The `bragi-data` volume keeps `playlists.json` and
+`users.json` across container removal or recreation. On CasaOS, you can
+instead mount a host folder at `/var/lib/bragi` and edit its `users.json`
+directly. Ensure the folder is writable by the container's `bragi` user.
 
 Allow inbound TCP port 8000 through Windows Firewall on **Private** networks
-only if other home devices cannot connect. Bragi has no authentication; do not
-allow access from Public networks or forward the port through your router.
+only if other home devices cannot connect. Do not allow access from Public
+networks or forward the port through your router.
 
 ## Tests
 

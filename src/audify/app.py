@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import Lock
 from urllib.parse import urlencode, urlsplit
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
@@ -21,10 +21,64 @@ YOUTUBE_HOSTS = {
     "music.youtube.com",
 }
 LIBRARY_LOCK = Lock()
+USER_LOCK = Lock()
+DEFAULT_USERS = {
+    "users": [
+        {"username": "admin", "password": "admin"},
+        {"username": "quest", "password": "guest"},
+    ]
+}
 
 
 class LibraryStorageError(Exception):
     pass
+
+
+class UserStorageError(Exception):
+    pass
+
+
+def read_users(path: Path) -> list[dict[str, str]]:
+    temporary_path = None
+    try:
+        with USER_LOCK:
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=path.parent,
+                    delete=False,
+                ) as users_file:
+                    temporary_path = Path(users_file.name)
+                    json.dump(DEFAULT_USERS, users_file, ensure_ascii=False, indent=2)
+                    users_file.write("\n")
+                os.replace(temporary_path, path)
+                temporary_path = None
+
+            with path.open(encoding="utf-8") as users_file:
+                document = json.load(users_file)
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                logging.getLogger(__name__).exception(
+                    "Could not clean up temporary user accounts file"
+                )
+        raise UserStorageError("Could not read the user accounts file.") from error
+
+    users = document.get("users") if isinstance(document, dict) else None
+    if not isinstance(users, list) or any(
+        not isinstance(user, dict)
+        or not isinstance(user.get("username"), str)
+        or not user["username"]
+        or not isinstance(user.get("password"), str)
+        or not user["password"]
+        for user in users
+    ):
+        raise UserStorageError("The user accounts file has an invalid format.")
+    return users
 
 
 def is_youtube_url(value: str) -> bool:
@@ -125,10 +179,73 @@ def create_app() -> Flask:
         )
     )
     app.config["PLAYLIST_LIBRARY_PATH"] = data_directory / "playlists.json"
+    app.config["USER_FILE_PATH"] = data_directory / "users.json"
+    app.secret_key = os.urandom(32)
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+    )
+
+    @app.before_request
+    def require_login():
+        if request.endpoint in {"login", "login_api", "static"}:
+            return None
+
+        username = session.get("username")
+        if not isinstance(username, str):
+            if request.endpoint == "index":
+                return redirect(url_for("login"))
+            return jsonify(error="Authentication required."), 401
+
+        try:
+            users = read_users(Path(app.config["USER_FILE_PATH"]))
+        except UserStorageError:
+            app.logger.exception("Could not validate the signed-in user")
+            return jsonify(error="Could not load user accounts."), 500
+
+        if not any(user["username"] == username for user in users):
+            session.clear()
+            if request.endpoint == "index":
+                return redirect(url_for("login"))
+            return jsonify(error="Authentication required."), 401
+        return None
+
+    @app.get("/login")
+    def login():
+        return render_template("login.html")
+
+    @app.post("/api/login")
+    def login_api():
+        payload = request.get_json(silent=True)
+        username = payload.get("username") if isinstance(payload, dict) else None
+        password = payload.get("password") if isinstance(payload, dict) else None
+        if not isinstance(username, str) or not isinstance(password, str):
+            return jsonify(error="Enter a username and password."), 400
+
+        try:
+            users = read_users(Path(app.config["USER_FILE_PATH"]))
+        except UserStorageError:
+            app.logger.exception("Could not load user accounts for login")
+            return jsonify(error="Could not load user accounts."), 500
+
+        if not any(
+            user["username"] == username and user["password"] == password
+            for user in users
+        ):
+            return jsonify(error="Incorrect username or password."), 401
+
+        session.clear()
+        session["username"] = username
+        return jsonify(success=True)
+
+    @app.post("/api/logout")
+    def logout():
+        session.clear()
+        return jsonify(success=True)
 
     @app.get("/")
     def index():
-        return render_template("index.html")
+        return render_template("index.html", username=session["username"])
 
     @app.get("/api/saved-playlists")
     def saved_playlists():
