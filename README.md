@@ -86,6 +86,37 @@ Bragi has no authentication, so do not allow access from Public networks or
 forward port 8000 through your router. Keep the service account's permissions
 to the project folder, especially `instance\playlists.json`, in mind.
 
+## Run with Docker Compose
+
+Install Docker Desktop for Windows and make sure its Linux container engine is
+running. From the project folder, build and start Bragi:
+
+```powershell
+docker compose up -d --build
+```
+
+Open `http://localhost:8000` on the PC running Docker, or
+`http://<host-computer-LAN-IP>:8000` from another device on the home network.
+If port 8000 is already in use by a manually started Bragi instance or the
+Windows service, stop that instance before starting the container.
+
+View logs or stop the container with:
+
+```powershell
+docker compose logs -f
+docker compose down
+```
+
+Compose restarts the container automatically unless it has been explicitly
+stopped. To have Bragi return after a PC reboot, configure Docker Desktop to
+start when you sign in. The container has no data volume: saved playlists are
+available while it runs, but are discarded when the container is removed or
+recreated.
+
+Allow inbound TCP port 8000 through Windows Firewall on **Private** networks
+only if other home devices cannot connect. Bragi has no authentication; do not
+allow access from Public networks or forward the port through your router.
+
 ## Tests
 
 ```powershell

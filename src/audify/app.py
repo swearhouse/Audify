@@ -118,9 +118,13 @@ def write_library(path: Path, library: list[dict[str, str]]) -> None:
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.config["PLAYLIST_LIBRARY_PATH"] = (
-        Path(__file__).resolve().parents[2] / "instance" / "playlists.json"
+    data_directory = Path(
+        os.environ.get(
+            "AUDIFY_DATA_DIR",
+            Path(__file__).resolve().parents[2] / "instance",
+        )
     )
+    app.config["PLAYLIST_LIBRARY_PATH"] = data_directory / "playlists.json"
 
     @app.get("/")
     def index():

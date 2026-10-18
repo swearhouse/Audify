@@ -19,6 +19,7 @@ def test_homepage_renders_player():
 
     assert response.status_code == 200
     assert b"<title>Bragi</title>" in response.data
+    assert b'<link rel="icon" type="image/png" href="/static/bragi.png">' in response.data
     assert '<span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi</button>'.encode() in response.data
     assert b'id="sidebar-toggle"' in response.data
     assert b'aria-expanded="true"' in response.data
@@ -77,6 +78,14 @@ def test_homepage_renders_player():
     assert b"const maxAudioLoadRetries = 2;" in response.data
     assert b"advanceTrack(index + 1);" in response.data
     assert b"await playTrack(0);" not in response.data
+
+
+def test_site_icon_is_served_as_png():
+    response = create_app().test_client().get("/static/bragi.png")
+
+    assert response.status_code == 200
+    assert response.mimetype == "image/png"
+    assert response.data.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_playlist_rejects_invalid_url():
@@ -274,6 +283,14 @@ def test_saved_playlists_persist_and_update_duplicate_urls(tmp_path):
         ]
     }
     assert library_path.exists()
+
+
+def test_data_directory_can_be_configured_with_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUDIFY_DATA_DIR", str(tmp_path))
+
+    app = create_app()
+
+    assert app.config["PLAYLIST_LIBRARY_PATH"] == tmp_path / "playlists.json"
 
 
 def test_saved_playlist_can_be_removed(tmp_path):
