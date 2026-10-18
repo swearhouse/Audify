@@ -126,26 +126,31 @@ def get_thumbnail_url(entry: dict) -> str | None:
     return max(valid_candidates, default=(0, None), key=lambda candidate: candidate[0])[1]
 
 
-def read_library(path: Path) -> list[dict[str, str]]:
+def read_library(path: Path) -> dict[str, list[dict[str, str]]]:
     try:
         if not path.exists():
-            return []
+            return {}
         with path.open(encoding="utf-8") as library_file:
             library = json.load(library_file)
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise LibraryStorageError("Could not read the saved playlist library.") from error
 
-    if not isinstance(library, list) or any(
-        not isinstance(item, dict)
-        or not isinstance(item.get("title"), str)
-        or not isinstance(item.get("url"), str)
-        for item in library
+    if not isinstance(library, dict) or any(
+        not isinstance(username, str)
+        or not isinstance(playlists, list)
+        or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("title"), str)
+            or not isinstance(item.get("url"), str)
+            for item in playlists
+        )
+        for username, playlists in library.items()
     ):
         raise LibraryStorageError("The saved playlist library has an invalid format.")
     return library
 
 
-def write_library(path: Path, library: list[dict[str, str]]) -> None:
+def write_library(path: Path, library: dict[str, list[dict[str, str]]]) -> None:
     temporary_path = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,7 +183,7 @@ def create_app() -> Flask:
             Path(__file__).resolve().parents[2] / "instance",
         )
     )
-    app.config["PLAYLIST_LIBRARY_PATH"] = data_directory / "playlists.json"
+    app.config["PLAYLIST_LIBRARY_PATH"] = data_directory / "user_playlists.json"
     app.config["USER_FILE_PATH"] = data_directory / "users.json"
     app.secret_key = os.urandom(32)
     app.config.update(
@@ -251,7 +256,8 @@ def create_app() -> Flask:
     def saved_playlists():
         try:
             with LIBRARY_LOCK:
-                playlists = read_library(Path(app.config["PLAYLIST_LIBRARY_PATH"]))
+                libraries = read_library(Path(app.config["PLAYLIST_LIBRARY_PATH"]))
+                playlists = libraries.get(session["username"], [])
         except LibraryStorageError:
             app.logger.exception("Could not load saved playlists")
             return jsonify(error="Could not load saved playlists."), 500
@@ -276,7 +282,8 @@ def create_app() -> Flask:
         try:
             with LIBRARY_LOCK:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
-                playlists = read_library(path)
+                libraries = read_library(path)
+                playlists = libraries.get(session["username"], [])
                 existing = next(
                     (item for item in playlists if item["url"] == playlist["url"]),
                     None,
@@ -285,7 +292,8 @@ def create_app() -> Flask:
                     existing["title"] = playlist["title"]
                 else:
                     playlists.append(playlist)
-                write_library(path, playlists)
+                libraries[session["username"]] = playlists
+                write_library(path, libraries)
         except LibraryStorageError:
             app.logger.exception("Could not save playlist")
             return jsonify(error="Could not save the playlist."), 500
@@ -301,11 +309,13 @@ def create_app() -> Flask:
         try:
             with LIBRARY_LOCK:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
-                playlists = read_library(path)
+                libraries = read_library(path)
+                playlists = libraries.get(session["username"], [])
                 remaining = [item for item in playlists if item["url"] != url.strip()]
                 if len(remaining) == len(playlists):
                     return jsonify(error="Saved playlist was not found."), 404
-                write_library(path, remaining)
+                libraries[session["username"]] = remaining
+                write_library(path, libraries)
         except LibraryStorageError:
             app.logger.exception("Could not remove saved playlist")
             return jsonify(error="Could not remove the saved playlist."), 500

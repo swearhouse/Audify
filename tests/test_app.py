@@ -8,6 +8,7 @@ from audify.app import create_app, is_youtube_url
 @pytest.fixture
 def app(tmp_path):
     app = create_app()
+    app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "user_playlists.json"
     app.config["USER_FILE_PATH"] = tmp_path / "users.json"
     return app
 
@@ -336,7 +337,7 @@ def test_resolve_returns_audio_stream(client):
 
 
 def test_saved_playlists_persist_and_update_duplicate_urls(tmp_path, app, client):
-    library_path = tmp_path / "playlists.json"
+    library_path = tmp_path / "user_playlists.json"
     app.config["PLAYLIST_LIBRARY_PATH"] = library_path
 
     first_response = client.post(
@@ -379,6 +380,69 @@ def test_saved_playlists_persist_and_update_duplicate_urls(tmp_path, app, client
         ]
     }
     assert library_path.exists()
+    assert '"admin"' in library_path.read_text(encoding="utf-8")
+
+
+def test_saved_playlists_are_isolated_between_users(app, client):
+    playlist_url = "https://www.youtube.com/playlist?list=admin-list"
+    saved = client.post(
+        "/api/saved-playlists",
+        json={"title": "Admin playlist", "url": playlist_url},
+    )
+    assert saved.status_code == 200
+
+    guest_client = app.test_client()
+    login = guest_client.post(
+        "/api/login",
+        json={"username": "quest", "password": "guest"},
+    )
+    assert login.status_code == 200
+    assert guest_client.get("/api/saved-playlists").json == {"playlists": []}
+
+    guest_client.post(
+        "/api/saved-playlists",
+        json={
+            "title": "Guest playlist",
+            "url": "https://www.youtube.com/playlist?list=guest-list",
+        },
+    )
+    assert guest_client.get("/api/saved-playlists").json == {
+        "playlists": [
+            {
+                "title": "Guest playlist",
+                "url": "https://www.youtube.com/playlist?list=guest-list",
+            }
+        ]
+    }
+    assert client.get("/api/saved-playlists").json == {
+        "playlists": [
+            {"title": "Admin playlist", "url": playlist_url}
+        ]
+    }
+
+    denied_removal = guest_client.delete(
+        "/api/saved-playlists",
+        json={"url": playlist_url},
+    )
+    assert denied_removal.status_code == 404
+
+
+def test_existing_shared_playlist_file_is_untouched_and_not_migrated(
+    tmp_path, app, client
+):
+    shared_library_path = tmp_path / "playlists.json"
+    original_contents = (
+        '[{"title":"Existing shared playlist",'
+        '"url":"https://www.youtube.com/playlist?list=legacy"}]'
+    )
+    shared_library_path.write_text(original_contents, encoding="utf-8")
+
+    response = client.get("/api/saved-playlists")
+
+    assert response.status_code == 200
+    assert response.json == {"playlists": []}
+    assert shared_library_path.read_text(encoding="utf-8") == original_contents
+    assert app.config["PLAYLIST_LIBRARY_PATH"] == tmp_path / "user_playlists.json"
 
 
 def test_data_directory_can_be_configured_with_environment(tmp_path, monkeypatch):
@@ -386,12 +450,12 @@ def test_data_directory_can_be_configured_with_environment(tmp_path, monkeypatch
 
     app = create_app()
 
-    assert app.config["PLAYLIST_LIBRARY_PATH"] == tmp_path / "playlists.json"
+    assert app.config["PLAYLIST_LIBRARY_PATH"] == tmp_path / "user_playlists.json"
     assert app.config["USER_FILE_PATH"] == tmp_path / "users.json"
 
 
 def test_saved_playlist_can_be_removed(tmp_path, app, client):
-    app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "playlists.json"
+    app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "user_playlists.json"
     playlist_url = "https://www.youtube.com/playlist?list=example"
     client.post(
         "/api/saved-playlists",
@@ -405,7 +469,7 @@ def test_saved_playlist_can_be_removed(tmp_path, app, client):
 
 
 def test_saved_playlist_rejects_invalid_url(tmp_path, app, client):
-    app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "playlists.json"
+    app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "user_playlists.json"
 
     response = client.post(
         "/api/saved-playlists",
@@ -416,7 +480,7 @@ def test_saved_playlist_rejects_invalid_url(tmp_path, app, client):
 
 
 def test_corrupt_saved_playlist_file_returns_error(tmp_path, app, client):
-    library_path = tmp_path / "playlists.json"
+    library_path = tmp_path / "user_playlists.json"
     library_path.write_text("{invalid json", encoding="utf-8")
     app.config["PLAYLIST_LIBRARY_PATH"] = library_path
 

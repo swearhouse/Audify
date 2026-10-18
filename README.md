@@ -14,15 +14,18 @@ upcoming playback order while keeping the current track selected. Loaded
 playlists can be saved to a JSON library on the host, reopened after restarting
 the app, and removed from the library. Saving the same URL again updates its
 saved title. The Save playlist button is enabled only after loading a playlist
-through the URL field's Load button. The library is stored in
-`instance/playlists.json` in the project folder. The lightweight responsive
+through the URL field's Load button. Saved playlists are stored per user in
+`instance/user_playlists.json` in the project folder. The existing shared
+`instance/playlists.json` file is left untouched and is not imported into the
+per-user libraries; users without an entry start with an empty library. The
+lightweight responsive
 interface places the saved library on the left and the player controls and
 playlist queue on the right on wider screens; it stacks them on narrow screens.
 If a track's audio stream fails to load, the player retries twice before
 automatically moving to the next track.
 
 Bragi requires a username and password to open the app or use its APIs. On the
-first login attempt, it creates `users.json` beside `playlists.json` with the
+first login attempt, it creates `users.json` in the data directory with the
 initial accounts `admin` / `admin` and `quest` / `guest`. Edit that JSON file
 to change passwords or add and remove accounts; account changes are checked
 against active sessions on each request. The file contains plaintext passwords
@@ -120,10 +123,11 @@ docker compose down
 
 Compose restarts the container automatically unless it has been explicitly
 stopped. To have Bragi return after a PC reboot, configure Docker Desktop to
-start when you sign in. The `bragi-data` volume keeps `playlists.json` and
-`users.json` across container removal or recreation. On CasaOS, you can
-instead mount a host folder at `/var/lib/bragi` and edit its `users.json`
-directly. Ensure the folder is writable by the container's `bragi` user.
+start when you sign in. The `bragi-data` volume keeps `user_playlists.json`
+and `users.json` across container removal or recreation. On CasaOS, you can
+instead mount a host folder at `/var/lib/bragi`; it will contain
+`user_playlists.json` and `users.json`. Ensure the folder is writable by the
+container's `bragi` user.
 
 Allow inbound TCP port 8000 through Windows Firewall on **Private** networks
 only if other home devices cannot connect. Do not allow access from Public
