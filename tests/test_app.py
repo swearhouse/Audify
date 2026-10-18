@@ -97,6 +97,12 @@ def test_homepage_renders_player(client):
     assert b'id="logout-button"' in response.data
     assert b"Signed in as <strong>admin</strong>" in response.data
     assert b'id="tracks"' in response.data
+    assert b'id="playlist-search"' in response.data
+    assert b'type="search"' in response.data
+    assert b'aria-label="Search tracks in the current playlist"' in response.data
+    assert b'id="track-search-status" role="status" aria-live="polite" hidden' in response.data
+    assert b'playlistSearch.addEventListener("input", renderTracks);' in response.data
+    assert b'.filter(({ track }) => track.title.toLocaleLowerCase().includes(query));' in response.data
     assert b"(${tracks.length} songs)" in response.data
     assert b"const maxAudioLoadRetries = 2;" in response.data
     assert b"advanceTrack(index + 1);" in response.data

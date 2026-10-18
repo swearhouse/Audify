@@ -367,6 +367,21 @@
         margin: 0;
       }
 
+      #playlist-search {
+        width: 100%;
+        margin: 0 0 12px;
+      }
+
+      #track-search-status {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      #track-search-status[hidden] {
+        display: none;
+      }
+
       #saved-playlists {
         margin: 0;
       }
@@ -587,6 +602,14 @@
             <span id="playlist-title">No playlist loaded</span>
             <button id="randomize-button" type="button" disabled>Randomize</button>
           </div>
+          <input
+            id="playlist-search"
+            type="search"
+            placeholder="Search tracks"
+            aria-label="Search tracks in the current playlist"
+            disabled
+          >
+          <p id="track-search-status" role="status" aria-live="polite" hidden></p>
           <ol id="tracks" aria-label="Playlist tracks"></ol>
         </section>
       </section>
@@ -602,6 +625,8 @@
       const nextButton = document.querySelector("#next-button");
       const randomizeButton = document.querySelector("#randomize-button");
       const trackList = document.querySelector("#tracks");
+      const playlistSearch = document.querySelector("#playlist-search");
+      const trackSearchStatus = document.querySelector("#track-search-status");
       const status = document.querySelector("#status");
       const playlistTitle = document.querySelector("#playlist-title");
       const savedStatus = document.querySelector("#saved-status");
@@ -665,7 +690,12 @@
 
       function renderTracks() {
         trackList.replaceChildren();
-        tracks.forEach((track, index) => {
+        const query = playlistSearch.value.trim().toLocaleLowerCase();
+        const matchingTracks = tracks
+          .map((track, index) => ({ track, index }))
+          .filter(({ track }) => track.title.toLocaleLowerCase().includes(query));
+
+        matchingTracks.forEach(({ track, index }) => {
           const item = document.createElement("li");
           const button = document.createElement("button");
           button.type = "button";
@@ -676,9 +706,14 @@
           item.append(button);
           trackList.append(item);
         });
+        trackSearchStatus.hidden = !query || matchingTracks.length > 0;
+        trackSearchStatus.textContent = query
+          ? `No tracks found for “${playlistSearch.value.trim()}”.`
+          : "";
         previousButton.disabled = currentIndex <= 0;
         nextButton.disabled = currentIndex < 0 || currentIndex >= tracks.length - 1;
         randomizeButton.disabled = tracks.length < 2;
+        playlistSearch.disabled = tracks.length === 0;
       }
 
       function clearPlayer() {
@@ -809,6 +844,9 @@
         clearPlayer();
         tracks = [];
         currentIndex = -1;
+        playlistSearch.value = "";
+        trackSearchStatus.hidden = true;
+        trackSearchStatus.textContent = "";
         currentPlaylistUrl = "";
         currentPlaylistTitle = "";
         canSaveCurrentPlaylist = false;
@@ -904,6 +942,7 @@
 
       previousButton.addEventListener("click", () => selectTrack(currentIndex - 1));
       nextButton.addEventListener("click", () => selectTrack(currentIndex + 1));
+      playlistSearch.addEventListener("input", renderTracks);
       saveButton.addEventListener("click", async () => {
         if (!canSaveCurrentPlaylist || !currentPlaylistUrl) {
           return;
