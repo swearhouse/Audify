@@ -41,7 +41,9 @@ def test_homepage_renders_player(client):
     assert response.status_code == 200
     assert b"<title>Bragi</title>" in response.data
     assert b'<link rel="icon" type="image/png" href="/static/bragi.png">' in response.data
-    assert '<span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi</button>'.encode() in response.data
+    assert b"<img" in response.data
+    assert b'class="brand-mark"' in response.data
+    assert b"https://raw.githubusercontent.com/swearhouse/Audify/main/src/audify/static/bragi.png" in response.data
     assert b'id="sidebar-toggle"' in response.data
     assert b'aria-expanded="true"' in response.data
     assert b'aria-controls="sidebar-content"' in response.data
@@ -70,9 +72,6 @@ def test_homepage_renders_player(client):
     assert b"min-height: 220px;" not in response.data
     assert b"max-height: 360px;" in response.data
     assert b"max-height: 52vh;" not in response.data
-    assert b"audio::-webkit-media-controls-panel {" in response.data
-    assert b"background-color: var(--ambient-color);" in response.data
-    assert b"transition: --ambient-color 1.2s ease;" in response.data
     assert b'player.style.setProperty("--ambient-color", ambientColor);' in response.data
     assert response.data.index(b'class="sidebar"') < response.data.index(b'class="workspace"')
     assert b'<section class="saved-library" aria-label="Saved playlists">' in response.data
@@ -88,11 +87,35 @@ def test_homepage_renders_player(client):
     assert b"grid-template-columns: 1fr;\n          gap: 8px;" in response.data
     assert b".workspace {\n          gap: 8px;\n          padding: 0;" in response.data
     assert b'id="current-thumbnail"' in response.data
-    assert b'<audio id="player" controls></audio>' in response.data
-    assert b'id="saved-playlists"' in response.data
-    assert b'id="save-button"' in response.data
+    assert b'<audio id="player" hidden></audio>' in response.data
+    assert b'id="play-pause-button"' in response.data
+    assert b'id="stop-button"' in response.data
     assert b'id="previous-button"' in response.data
     assert b'id="next-button"' in response.data
+    assert b'id="cast-button"' in response.data
+    assert b"Material+Symbols+Outlined" in response.data
+    assert b">skip_previous</span>" in response.data
+    assert b">play_arrow</span>" in response.data
+    assert b">stop</span>" in response.data
+    assert b">skip_next</span>" in response.data
+    assert b">cast</span>" in response.data
+    assert b">playlist_play</span>" in response.data
+    assert b">bookmark_add</span>" in response.data
+    assert b">shuffle</span>" in response.data
+    assert b'<span>Save</span>' in response.data
+    assert b"Randomize</span>" not in response.data
+    assert b'aria-label="Shuffle playlist"' in response.data
+    assert b"place-items: center;" in response.data
+    assert b'removeButton.textContent = "delete";' in response.data
+    assert b'id="logout-button"' in response.data
+    assert b">logout</span>" in response.data
+    assert b'id="seek-slider"' in response.data
+    assert b'id="volume-slider"' in response.data
+    assert b"remotePlayerController.playOrPause();" in response.data
+    assert b"remotePlayerController.stop();" in response.data
+    assert b"remotePlayerController.seek();" in response.data
+    assert b'id="saved-playlists"' in response.data
+    assert b'id="save-button"' in response.data
     assert b'id="randomize-button"' in response.data
     assert b'id="logout-button"' in response.data
     assert b"Signed in as <strong>admin</strong>" in response.data
@@ -339,7 +362,26 @@ def test_resolve_returns_audio_stream(client):
     assert response.json == {
         "title": "Example",
         "audio_url": "https://audio.example/stream",
+        "content_type": "audio/mpeg",
     }
+
+
+def test_resolve_returns_audio_content_type_from_extension(client):
+    video_info = {
+        "title": "Example",
+        "url": "https://audio.example/stream",
+        "ext": "webm",
+    }
+
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = video_info
+        response = client.post(
+            "/api/resolve",
+            json={"url": "https://www.youtube.com/watch?v=example"},
+        )
+
+    assert response.status_code == 200
+    assert response.json["content_type"] == "audio/webm"
 
 
 def test_saved_playlists_persist_and_update_duplicate_urls(tmp_path, app, client):

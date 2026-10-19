@@ -20,6 +20,16 @@ YOUTUBE_HOSTS = {
     "m.youtube.com",
     "music.youtube.com",
 }
+AUDIO_MIME_TYPES = {
+    "aac": "audio/aac",
+    "flac": "audio/flac",
+    "m4a": "audio/mp4",
+    "mp3": "audio/mpeg",
+    "ogg": "audio/ogg",
+    "opus": "audio/ogg",
+    "wav": "audio/wav",
+    "webm": "audio/webm",
+}
 LIBRARY_LOCK = Lock()
 USER_LOCK = Lock()
 DEFAULT_USERS = {
@@ -390,6 +400,19 @@ def create_app() -> Flask:
         if not info or not info.get("url"):
             return jsonify(error="No playable audio stream was found."), 422
 
-        return jsonify(title=info.get("title") or "YouTube audio", audio_url=info["url"])
+        content_type = info.get("mime_type")
+        if not isinstance(content_type, str) or not content_type.startswith("audio/"):
+            extension = info.get("ext")
+            content_type = (
+                AUDIO_MIME_TYPES.get(extension)
+                if isinstance(extension, str)
+                else None
+            ) or "audio/mpeg"
+
+        return jsonify(
+            title=info.get("title") or "YouTube audio",
+            audio_url=info["url"],
+            content_type=content_type,
+        )
 
     return app

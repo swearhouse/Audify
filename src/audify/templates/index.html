@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Bragi</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='bragi.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      rel="stylesheet"
+    >
     <style>
       @property --ambient-color {
         syntax: "<color>";
@@ -95,6 +101,24 @@
         opacity: 0.42;
       }
 
+      .icon-button {
+        display: inline-grid;
+        width: 42px;
+        min-width: 42px;
+        place-items: center;
+        padding: 0;
+      }
+
+      .material-symbols-outlined {
+        font-family: "Material Symbols Outlined", sans-serif;
+        font-size: 22px;
+        font-weight: 500;
+        line-height: 1;
+        font-style: normal;
+        font-variation-settings: "FILL" 0, "GRAD" 0, "opsz" 24;
+        user-select: none;
+      }
+
       .app-shell {
         display: grid;
         align-items: start;
@@ -152,16 +176,10 @@
       }
 
       .brand-mark {
-        display: grid;
         width: 34px;
         height: 34px;
-        place-items: center;
-        border-radius: 11px;
-        background: #8de0bd;
-        color: #102019;
-        font-size: 30px;
-        line-height: 30px;
-        letter-spacing: 0;
+        flex: none;
+        object-fit: cover;
       }
 
       .sidebar h2,
@@ -206,11 +224,6 @@
         transition: --ambient-color 1.2s ease;
       }
 
-      audio::-webkit-media-controls-panel {
-        background-color: var(--ambient-color);
-        transition: background-color 1.2s ease;
-      }
-
       .workspace {
         display: flex;
         flex-direction: column;
@@ -240,6 +253,17 @@
       .sidebar-actions button {
         min-width: 0;
         flex: 1;
+      }
+
+      .button-with-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+
+      .button-with-icon .material-symbols-outlined {
+        font-size: 19px;
       }
 
       #load-button,
@@ -311,14 +335,116 @@
 
       .player-controls {
         display: flex;
-        align-items: center;
-        gap: 10px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
         margin-top: 20px;
       }
 
-      #playback-controls {
+      #transport-controls {
         display: flex;
+        flex-wrap: wrap;
+        align-items: center;
         gap: 8px;
+      }
+
+      .seek-control {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      #seek-slider,
+      #volume-slider {
+        height: 8px;
+        padding: 0;
+        border: 0;
+        border-radius: 999px;
+        appearance: none;
+        -webkit-appearance: none;
+        background: linear-gradient(
+          to right,
+          var(--ambient-color) 0%,
+          var(--ambient-color) var(--slider-progress, 0%),
+          var(--border) var(--slider-progress, 0%),
+          var(--border) 100%
+        );
+        accent-color: var(--ambient-color);
+        cursor: pointer;
+      }
+
+      #seek-slider {
+        width: 100%;
+      }
+
+      #volume-slider {
+        width: 112px;
+        margin: 0;
+      }
+
+      #seek-slider::-webkit-slider-runnable-track,
+      #volume-slider::-webkit-slider-runnable-track {
+        height: 8px;
+        border-radius: 999px;
+        background: transparent;
+      }
+
+      #seek-slider::-webkit-slider-thumb,
+      #volume-slider::-webkit-slider-thumb {
+        width: 16px;
+        height: 16px;
+        margin-top: -4px;
+        appearance: none;
+        -webkit-appearance: none;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        background: #fff;
+      }
+
+      #seek-slider::-moz-range-track,
+      #volume-slider::-moz-range-track {
+        height: 8px;
+        border-radius: 999px;
+        background: transparent;
+      }
+
+      #seek-slider::-moz-range-progress,
+      #volume-slider::-moz-range-progress {
+        height: 8px;
+        border-radius: 999px;
+        background: transparent;
+      }
+
+      #seek-slider::-moz-range-thumb,
+      #volume-slider::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        background: #fff;
+      }
+
+      .volume-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 150px;
+        align-self: flex-start;
+      }
+
+      .volume-control label {
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      #volume-value {
+        min-width: 3ch;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        text-align: right;
       }
 
       #randomize-button {
@@ -439,12 +565,13 @@
       }
 
       #saved-playlists li button:last-child {
-        width: auto;
+        display: inline-grid;
+        width: 36px;
         flex: none;
         min-height: 34px;
-        padding: 0.35rem 0.6rem;
+        padding: 0;
+        place-items: center;
         color: #8996a8;
-        font-size: 12px;
       }
 
       .sidebar-note {
@@ -519,11 +646,6 @@
           padding: 18px;
         }
 
-        .player-controls {
-          align-items: stretch;
-          flex-wrap: wrap;
-        }
-
         #current-thumbnail {
           width: 88px;
           height: 66px;
@@ -543,7 +665,10 @@
   <body>
     <header class="account-bar">
       <span>Signed in as <strong>{{ username }}</strong></span>
-      <button id="logout-button" type="button">Log out</button>
+      <button id="logout-button" class="button-with-icon" type="button" title="Log out">
+        <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+        <span>Log out</span>
+      </button>
     </header>
     <main class="app-shell">
       <aside class="sidebar" aria-label="Playlist library">
@@ -553,7 +678,12 @@
           type="button"
           aria-expanded="true"
           aria-controls="sidebar-content"
-        ><span class="brand-mark" aria-hidden="true">ᛉ</span>Bragi</button>
+        ><img
+          class="brand-mark"
+          src="https://raw.githubusercontent.com/swearhouse/Audify/main/src/audify/static/bragi.png"
+          alt=""
+          aria-hidden="true"
+        >Bragi</button>
         <div id="sidebar-content">
           <section class="saved-library" aria-label="Saved playlists">
             <p class="sidebar-label">Your library</p>
@@ -573,8 +703,14 @@
               required
             >
             <div class="sidebar-actions">
-              <button id="load-button" type="submit">Load</button>
-              <button id="save-button" type="button" disabled>Save playlist</button>
+              <button id="load-button" class="button-with-icon" type="submit" title="Load playlist">
+                <span class="material-symbols-outlined" aria-hidden="true">playlist_play</span>
+                <span>Load</span>
+              </button>
+              <button id="save-button" class="button-with-icon" type="button" disabled title="Save playlist">
+                <span class="material-symbols-outlined" aria-hidden="true">bookmark_add</span>
+                <span>Save</span>
+              </button>
             </div>
           </form>
         </div>
@@ -588,11 +724,56 @@
               <p id="status" role="status" aria-live="polite">Load a playlist to start listening.</p>
             </div>
           </div>
-          <audio id="player" controls></audio>
+          <audio id="player" hidden></audio>
           <div class="player-controls">
-            <div id="playback-controls">
-              <button id="previous-button" type="button" disabled>Previous</button>
-              <button id="next-button" type="button" disabled>Next</button>
+            <div id="transport-controls">
+              <button id="previous-button" class="icon-button" type="button" disabled aria-label="Previous track" title="Previous track">
+                <span class="material-symbols-outlined" aria-hidden="true">skip_previous</span>
+              </button>
+              <button id="play-pause-button" class="icon-button" type="button" disabled aria-label="Play" title="Play">
+                <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+              </button>
+              <button id="stop-button" class="icon-button" type="button" disabled aria-label="Stop" title="Stop">
+                <span class="material-symbols-outlined" aria-hidden="true">stop</span>
+              </button>
+              <button id="next-button" class="icon-button" type="button" disabled aria-label="Next track" title="Next track">
+                <span class="material-symbols-outlined" aria-hidden="true">skip_next</span>
+              </button>
+              <button
+                id="cast-button"
+                class="icon-button"
+                type="button"
+                disabled
+                title="Casting requires HTTPS; localhost is allowed."
+                aria-label="Cast unavailable"
+              ><span class="material-symbols-outlined" aria-hidden="true">cast</span></button>
+            </div>
+            <div class="seek-control">
+              <output id="seek-current-time" for="seek-slider">0:00</output>
+              <input
+                id="seek-slider"
+                type="range"
+                min="0"
+                max="0"
+                step="0.1"
+                value="0"
+                aria-label="Seek"
+                disabled
+              >
+              <span id="seek-duration">0:00</span>
+            </div>
+            <div class="volume-control">
+              <label for="volume-slider">Volume</label>
+              <input
+                id="volume-slider"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value="1"
+                aria-label="Volume"
+              >
+              <output id="volume-value" for="volume-slider">100%</output>
             </div>
           </div>
         </section>
@@ -600,7 +781,16 @@
           <div class="queue-heading">
             <h2 id="queue-heading">Playlist</h2>
             <span id="playlist-title">No playlist loaded</span>
-            <button id="randomize-button" type="button" disabled>Randomize</button>
+            <button
+              id="randomize-button"
+              class="icon-button"
+              type="button"
+              disabled
+              title="Shuffle playlist"
+              aria-label="Shuffle playlist"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">shuffle</span>
+            </button>
           </div>
           <input
             id="playlist-search"
@@ -614,6 +804,14 @@
         </section>
       </section>
     </main>
+    <script>
+      window.castApiAvailable = false;
+      window.__onGCastApiAvailable = (isAvailable) => {
+        window.castApiAvailable = isAvailable;
+        window.dispatchEvent(new Event("cast-sdk-ready"));
+      };
+    </script>
+    <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
     <script>
       const form = document.querySelector("#url-form");
       const sidebar = document.querySelector(".sidebar");
@@ -633,6 +831,16 @@
       const savedList = document.querySelector("#saved-playlists");
       const saveButton = document.querySelector("#save-button");
       const player = document.querySelector("#player");
+      const castButton = document.querySelector("#cast-button");
+      const castIcon = castButton.querySelector(".material-symbols-outlined");
+      const playPauseButton = document.querySelector("#play-pause-button");
+      const playPauseIcon = playPauseButton.querySelector(".material-symbols-outlined");
+      const stopButton = document.querySelector("#stop-button");
+      const seekSlider = document.querySelector("#seek-slider");
+      const seekCurrentTime = document.querySelector("#seek-current-time");
+      const seekDuration = document.querySelector("#seek-duration");
+      const volumeSlider = document.querySelector("#volume-slider");
+      const volumeValue = document.querySelector("#volume-value");
       const maxAudioLoadRetries = 2;
       const audioLoadError = "The audio stream could not be loaded.";
       const currentThumbnail = document.querySelector("#current-thumbnail");
@@ -647,6 +855,319 @@
       let currentPlaylistUrl = "";
       let currentPlaylistTitle = "";
       let canSaveCurrentPlaylist = false;
+      let castContext = null;
+      let castSession = null;
+      let remotePlayer = null;
+      let remotePlayerController = null;
+      let resolvedMedia = null;
+      let isSeeking = false;
+
+      function formatTime(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) {
+          return "0:00";
+        }
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = Math.floor(seconds % 60);
+        return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+      }
+
+      function updateSeekProgress(value, duration) {
+        const progress = Number.isFinite(duration) && duration > 0
+          ? Math.min(100, Math.max(0, (value / duration) * 100))
+          : 0;
+        seekSlider.style.setProperty("--slider-progress", `${progress}%`);
+      }
+
+      function updateVolumeProgress(volume) {
+        volumeSlider.style.setProperty("--slider-progress", `${volume * 100}%`);
+      }
+
+      function updatePlaybackControls() {
+        const casting = Boolean(castSession);
+        const hasRemoteMedia = casting && remotePlayer && remotePlayer.isMediaLoaded;
+        const hasLocalMedia = !casting && Boolean(resolvedMedia);
+        const hasMedia = hasRemoteMedia || hasLocalMedia;
+        const duration = hasRemoteMedia
+          ? remotePlayer.duration
+          : hasLocalMedia
+            ? player.duration
+            : 0;
+        const currentTime = hasRemoteMedia
+          ? remotePlayer.currentTime
+          : hasLocalMedia
+            ? player.currentTime
+            : 0;
+        const canSeek = hasRemoteMedia
+          ? remotePlayer.canSeek
+          : hasLocalMedia && Number.isFinite(duration) && duration > 0;
+
+        playPauseButton.disabled = !hasMedia;
+        stopButton.disabled = !hasMedia;
+        const shouldPlay = hasRemoteMedia
+          ? remotePlayer.isPaused
+          : hasLocalMedia && player.paused;
+        playPauseIcon.textContent = shouldPlay ? "play_arrow" : "pause";
+        playPauseButton.setAttribute("aria-label", shouldPlay ? "Play" : "Pause");
+        playPauseButton.title = shouldPlay ? "Play" : "Pause";
+        seekSlider.disabled = !canSeek;
+        seekSlider.max = String(Number.isFinite(duration) ? duration : 0);
+        seekDuration.textContent = formatTime(duration);
+        updateSeekProgress(isSeeking ? Number(seekSlider.value) : currentTime, duration);
+        if (!isSeeking) {
+          seekSlider.value = String(Number.isFinite(currentTime) ? currentTime : 0);
+          seekCurrentTime.value = formatTime(currentTime);
+          seekCurrentTime.textContent = seekCurrentTime.value;
+        }
+      }
+
+      function onRemotePlayerChanged() {
+        updatePlaybackControls();
+        if (remotePlayer && remotePlayer.title) {
+          status.textContent = remotePlayer.title;
+        }
+      }
+
+      function updateVolumeControl(volume) {
+        if (!Number.isFinite(volume)) {
+          return;
+        }
+        const normalizedVolume = Math.min(1, Math.max(0, volume));
+        volumeSlider.value = String(normalizedVolume);
+        updateVolumeProgress(normalizedVolume);
+        volumeValue.value = `${Math.round(normalizedVolume * 100)}%`;
+        volumeValue.textContent = volumeValue.value;
+      }
+
+      function syncCastVolume() {
+        if (castSession) {
+          const volume = castSession.getVolume();
+          if (Number.isFinite(volume)) {
+            updateVolumeControl(volume);
+          }
+        }
+      }
+
+      function onCastVolumeChanged() {
+        syncCastVolume();
+      }
+
+      function updateCastUi() {
+        const castLabel = castSession ? "Disconnect from Chromecast" : "Cast to Chromecast";
+        castButton.disabled = !castContext;
+        castIcon.textContent = castSession ? "cast_connected" : "cast";
+        castButton.title = castContext
+          ? castLabel
+          : (window.isSecureContext
+            ? "Casting is unavailable in this browser."
+            : "Casting requires HTTPS; localhost is allowed.");
+        castButton.setAttribute("aria-label", castContext ? castLabel : "Cast unavailable");
+        updatePlaybackControls();
+      }
+
+      function loadCastMedia(media) {
+        if (!castSession) {
+          return;
+        }
+
+        const mediaInfo = new chrome.cast.media.MediaInfo(
+          media.audioUrl,
+          media.contentType,
+        );
+        const metadata = new chrome.cast.media.GenericMediaMetadata();
+        metadata.title = media.title;
+        if (media.thumbnailUrl) {
+          metadata.images = [new chrome.cast.Image(media.thumbnailUrl)];
+        }
+        mediaInfo.metadata = metadata;
+
+        const loadRequest = new chrome.cast.media.LoadRequest(mediaInfo);
+        loadRequest.autoplay = true;
+        status.textContent = `Sending ${media.title} to Chromecast…`;
+        castSession.loadMedia(loadRequest).then(
+          () => {
+            if (resolvedMedia === media && castSession) {
+              status.textContent = media.title;
+            }
+          },
+          () => {
+            if (resolvedMedia === media && castSession) {
+              status.textContent = `Could not cast ${media.title}. The Chromecast may not support this audio stream.`;
+              castContext.endCurrentSession(true);
+            }
+          },
+        );
+      }
+
+      async function playLocally(media) {
+        const metadataLoaded = waitForMetadata();
+        player.src = media.audioUrl;
+        player.load();
+        await metadataLoaded;
+        player.currentTime = 0;
+        await player.play();
+        status.textContent = media.title;
+      }
+
+      function initializeCast() {
+        if (!window.castApiAvailable || !window.cast || !window.cast.framework) {
+          castButton.disabled = true;
+          castButton.title = window.isSecureContext
+            ? "Casting is unavailable in this browser."
+            : "Casting requires HTTPS; localhost is allowed.";
+          castButton.setAttribute("aria-label", "Cast unavailable");
+          return;
+        }
+
+        castContext = cast.framework.CastContext.getInstance();
+        remotePlayer = new cast.framework.RemotePlayer();
+        remotePlayerController = new cast.framework.RemotePlayerController(remotePlayer);
+        [
+          cast.framework.RemotePlayerEventType.CURRENT_TIME_CHANGED,
+          cast.framework.RemotePlayerEventType.DURATION_CHANGED,
+          cast.framework.RemotePlayerEventType.IS_MEDIA_LOADED_CHANGED,
+          cast.framework.RemotePlayerEventType.IS_PAUSED_CHANGED,
+          cast.framework.RemotePlayerEventType.PLAYER_STATE_CHANGED,
+          cast.framework.RemotePlayerEventType.CAN_SEEK_CHANGED,
+        ].forEach((eventType) => {
+          remotePlayerController.addEventListener(eventType, onRemotePlayerChanged);
+        });
+        castContext.setOptions({
+          receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+          autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+        });
+        castContext.addEventListener(
+          cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+          (event) => {
+            if (
+              event.sessionState === cast.framework.SessionState.SESSION_STARTED
+              || event.sessionState === cast.framework.SessionState.SESSION_RESUMED
+            ) {
+              castSession = castContext.getCurrentSession();
+              castSession.addEventListener(
+                cast.framework.SessionEventType.VOLUME_CHANGED,
+                onCastVolumeChanged,
+              );
+              updateCastUi();
+              syncCastVolume();
+              updatePlaybackControls();
+              if (resolvedMedia) {
+                player.pause();
+                loadCastMedia(resolvedMedia);
+              } else {
+                status.textContent = "Connected to Chromecast. Select a track to play.";
+              }
+            } else if (
+              event.sessionState === cast.framework.SessionState.SESSION_ENDED
+            ) {
+              castSession = null;
+              updateCastUi();
+              updateVolumeControl(player.volume);
+              if (resolvedMedia) {
+                playLocally(resolvedMedia).catch((error) => {
+                  status.textContent = `Could not resume local playback: ${error.message}`;
+                });
+              }
+            }
+          },
+        );
+        castSession = castContext.getCurrentSession();
+        if (castSession) {
+          castSession.addEventListener(
+            cast.framework.SessionEventType.VOLUME_CHANGED,
+            onCastVolumeChanged,
+          );
+          syncCastVolume();
+        }
+        updateCastUi();
+      }
+
+      window.addEventListener("cast-sdk-ready", initializeCast);
+      initializeCast();
+
+      castButton.addEventListener("click", async () => {
+        try {
+          if (castSession) {
+            castContext.endCurrentSession(true);
+          } else if (castContext) {
+            await castContext.requestSession();
+          }
+        } catch (error) {
+          status.textContent = `Could not connect to Chromecast: ${error.message}`;
+        }
+      });
+
+      volumeSlider.addEventListener("input", () => {
+        const volume = Number(volumeSlider.value);
+        updateVolumeControl(volume);
+        if (castSession) {
+          castSession.setVolume(volume).catch(() => {
+            status.textContent = "Could not change Chromecast volume.";
+          });
+        } else {
+          player.volume = volume;
+        }
+      });
+
+      playPauseButton.addEventListener("click", async () => {
+        try {
+          if (castSession) {
+            if (remotePlayer && remotePlayer.isMediaLoaded) {
+              remotePlayerController.playOrPause();
+            }
+          } else if (player.paused) {
+            await player.play();
+          } else {
+            player.pause();
+          }
+        } catch (error) {
+          status.textContent = `Could not change playback: ${error.message}`;
+        }
+      });
+      stopButton.addEventListener("click", () => {
+        if (castSession) {
+          if (remotePlayer && remotePlayer.isMediaLoaded) {
+            remotePlayerController.stop();
+          }
+        } else if (resolvedMedia) {
+          player.pause();
+          player.currentTime = 0;
+          status.textContent = "Stopped.";
+        }
+      });
+      seekSlider.addEventListener("input", () => {
+        isSeeking = true;
+        const seekTime = Number(seekSlider.value);
+        seekCurrentTime.value = formatTime(seekTime);
+        seekCurrentTime.textContent = seekCurrentTime.value;
+        updateSeekProgress(seekTime, Number(seekSlider.max));
+      });
+      seekSlider.addEventListener("change", () => {
+        const seekTime = Number(seekSlider.value);
+        isSeeking = false;
+        if (castSession && remotePlayer && remotePlayer.isMediaLoaded) {
+          remotePlayer.currentTime = seekTime;
+          remotePlayerController.seek();
+        } else if (resolvedMedia && Number.isFinite(player.duration)) {
+          player.currentTime = seekTime;
+          updatePlaybackControls();
+        }
+      });
+      player.addEventListener("volumechange", () => {
+        if (!castSession) {
+          updateVolumeControl(player.volume);
+        }
+      });
+      [
+        "durationchange",
+        "loadedmetadata",
+        "pause",
+        "play",
+        "timeupdate",
+      ].forEach((eventType) => {
+        player.addEventListener(eventType, updatePlaybackControls);
+      });
+      updateVolumeControl(player.volume);
+      updatePlaybackControls();
 
       logoutButton.addEventListener("click", async () => {
         try {
@@ -672,6 +1193,8 @@
         const ambientColor = ambientColors[ambientColorIndex];
         document.body.style.setProperty("--ambient-color", ambientColor);
         player.style.setProperty("--ambient-color", ambientColor);
+        seekSlider.style.setProperty("--ambient-color", ambientColor);
+        volumeSlider.style.setProperty("--ambient-color", ambientColor);
       }
 
       function selectTrack(index) {
@@ -763,6 +1286,7 @@
         const track = tracks[index];
         const requestId = ++playbackRequest;
         currentIndex = index;
+        resolvedMedia = null;
         renderTracks();
         clearPlayer();
         currentThumbnail.hidden = true;
@@ -801,8 +1325,20 @@
             return;
           }
 
+          resolvedMedia = {
+            audioUrl: result.audio_url,
+            contentType: result.content_type || "audio/mpeg",
+            title: result.title,
+            thumbnailUrl: track.thumbnail_url,
+          };
+          if (castSession) {
+            player.pause();
+            loadCastMedia(resolvedMedia);
+            return;
+          }
+
           const metadataLoaded = waitForMetadata();
-          player.src = result.audio_url;
+          player.src = resolvedMedia.audioUrl;
           player.load();
           await metadataLoaded;
           if (requestId !== playbackRequest) {
@@ -811,7 +1347,8 @@
           player.currentTime = 0;
           await player.play();
           if (requestId === playbackRequest) {
-            status.textContent = result.title;
+            status.textContent = resolvedMedia.title;
+            updatePlaybackControls();
           }
         } catch (error) {
           if (requestId === playbackRequest) {
@@ -907,7 +1444,9 @@
 
           const removeButton = document.createElement("button");
           removeButton.type = "button";
-          removeButton.textContent = "Remove";
+          removeButton.classList.add("material-symbols-outlined");
+          removeButton.textContent = "delete";
+          removeButton.title = `Remove ${playlist.title}`;
           removeButton.setAttribute("aria-label", `Remove ${playlist.title}`);
           removeButton.addEventListener("click", () => removeSavedPlaylist(playlist.url));
           item.append(openButton, removeButton);

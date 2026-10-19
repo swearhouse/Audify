@@ -2,16 +2,23 @@
 
 Bragi is a small, self-hosted web audio player for a trusted home network.
 Paste a YouTube video or playlist URL to load its tracks, then select a track
-to play it in your browser. Bragi supports previous/next playback, shuffle,
-searching track titles in the loaded playlist, track thumbnails, and a
-saved-playlist library that is separate for each user. It resolves streams when
-you play a track; it does not download or store audio.
+to play it in your browser. Bragi supports play/pause, stop, seeking,
+previous/next playback, volume, shuffle, searching track titles in the loaded
+playlist, track thumbnails, and a saved-playlist library that is separate for
+each user. It resolves streams when you play a track; it does not download or
+store audio.
 
 Bragi requires a username and password to use the app and its APIs. It is
 intended for a trusted local network, not direct public exposure. The app uses
 HTTP by default, so login credentials are not encrypted in transit. Do not
 forward its port to the internet; use an HTTPS reverse proxy if you need remote
 access.
+
+The player includes experimental Chromecast support in Cast-enabled browsers,
+including remote play/pause, stop, seeking, and volume controls. Casting
+requires a secure origin (HTTPS, or localhost) and a Chromecast that can reach
+and play the resolved audio URL. Some audio streams may not be supported by
+the receiver; in that case, playback remains available in the browser.
 
 ## User accounts
 
