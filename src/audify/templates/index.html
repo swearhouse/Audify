@@ -101,6 +101,41 @@
         opacity: 0.42;
       }
 
+      #delete-playlist-dialog {
+        width: min(420px, calc(100% - 32px));
+        padding: 24px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--surface-raised);
+        color: #edf1f7;
+      }
+
+      #delete-playlist-dialog::backdrop {
+        background: #05070bbf;
+        backdrop-filter: blur(3px);
+      }
+
+      #delete-playlist-dialog h2 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      #delete-playlist-dialog p {
+        margin: 0;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .delete-playlist-actions {
+        justify-content: flex-end;
+        margin-top: 22px;
+      }
+
+      .delete-playlist-confirm {
+        border-color: #743c45;
+        background: #512b33;
+      }
+
       .icon-button {
         display: inline-grid;
         width: 42px;
@@ -493,6 +528,12 @@
         margin: 0;
       }
 
+      #tracks li {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
       #playlist-search {
         width: 100%;
         margin: 0 0 12px;
@@ -528,7 +569,35 @@
         font-weight: 500;
       }
 
-      #tracks button::before {
+      #tracks .track-select {
+        width: auto;
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #tracks .track-reorder,
+      #saved-playlists .saved-playlist-action {
+        display: inline-grid;
+        width: 34px;
+        min-height: 34px;
+        flex: none;
+        padding: 0;
+        place-items: center;
+        color: #8996a8;
+      }
+
+      #tracks .track-reorder:disabled {
+        opacity: 0.35;
+      }
+
+      #tracks li[aria-grabbed="true"] {
+        opacity: 0.55;
+      }
+
+      #tracks .track-select::before {
         width: 22px;
         color: #738195;
         content: attr(data-track-number);
@@ -548,11 +617,13 @@
 
       #saved-playlists li {
         display: flex;
+        min-width: 0;
+        max-width: 100%;
         align-items: center;
-        gap: 5px;
+        gap: 3px;
       }
 
-      #saved-playlists li button:first-child {
+      #saved-playlists .saved-playlist-title {
         width: auto;
         min-width: 0;
         flex: 1;
@@ -564,14 +635,56 @@
         white-space: nowrap;
       }
 
-      #saved-playlists li button:last-child {
-        display: inline-grid;
-        width: 36px;
+      #saved-playlists .saved-playlist-drag-handle {
+        display: block;
+        width: 20px;
+        height: 32px;
         flex: none;
-        min-height: 34px;
+        border-radius: 5px;
+        background:
+          linear-gradient(currentColor, currentColor) center calc(50% - 3px) / 12px 2px no-repeat,
+          linear-gradient(currentColor, currentColor) center calc(50% + 3px) / 12px 2px no-repeat;
+        color: #8996a8;
+        cursor: grab;
+        touch-action: none;
+        user-select: none;
+      }
+
+      #saved-playlists .saved-playlist-drag-handle:active {
+        cursor: grabbing;
+      }
+
+      #saved-playlists li[aria-grabbed="true"] {
+        opacity: 0.55;
+      }
+
+      #saved-playlists .saved-playlist-action {
+        display: inline-grid;
+        width: 28px;
+        flex: none;
+        min-height: 32px;
         padding: 0;
         place-items: center;
         color: #8996a8;
+      }
+
+      .saved-playlist-rename {
+        display: flex;
+        width: auto;
+        min-width: 0;
+        flex: 1;
+        gap: 3px;
+      }
+
+      .saved-playlist-rename input {
+        width: 100%;
+        min-width: 0;
+        flex: 1;
+        margin: 0;
+      }
+
+      .saved-playlist-rename .saved-playlist-action {
+        width: 28px;
       }
 
       .sidebar-note {
@@ -804,6 +917,14 @@
         </section>
       </section>
     </main>
+    <dialog id="delete-playlist-dialog" aria-labelledby="delete-playlist-heading">
+      <h2 id="delete-playlist-heading">Delete saved playlist?</h2>
+      <p id="delete-playlist-message"></p>
+      <form class="delete-playlist-actions" method="dialog">
+        <button type="submit" value="cancel">Cancel</button>
+        <button class="delete-playlist-confirm" type="submit" value="delete">Delete</button>
+      </form>
+    </dialog>
     <script>
       window.castApiAvailable = false;
       window.__onGCastApiAvailable = (isAvailable) => {
@@ -830,6 +951,8 @@
       const savedStatus = document.querySelector("#saved-status");
       const savedList = document.querySelector("#saved-playlists");
       const saveButton = document.querySelector("#save-button");
+      const deletePlaylistDialog = document.querySelector("#delete-playlist-dialog");
+      const deletePlaylistMessage = document.querySelector("#delete-playlist-message");
       const player = document.querySelector("#player");
       const castButton = document.querySelector("#cast-button");
       const castIcon = castButton.querySelector(".material-symbols-outlined");
@@ -855,6 +978,9 @@
       let currentPlaylistUrl = "";
       let currentPlaylistTitle = "";
       let canSaveCurrentPlaylist = false;
+      let currentPlaylistSaved = false;
+      let trackOrderSaveTimer = null;
+      let savedPlaylists = [];
       let castContext = null;
       let castSession = null;
       let remotePlayer = null;
@@ -1276,13 +1402,47 @@
 
         matchingTracks.forEach(({ track, index }) => {
           const item = document.createElement("li");
+          item.draggable = true;
+          item.dataset.trackIndex = String(index);
           const button = document.createElement("button");
           button.type = "button";
-          button.textContent = `${index + 1}. ${track.title}`;
+          button.classList.add("track-select");
+          button.textContent = track.title;
           button.setAttribute("data-track-number", String(index + 1));
           button.setAttribute("aria-current", String(index === currentIndex));
           button.addEventListener("click", () => selectTrack(index));
-          item.append(button);
+
+          const moveUpButton = document.createElement("button");
+          moveUpButton.type = "button";
+          moveUpButton.classList.add("material-symbols-outlined", "track-reorder");
+          moveUpButton.textContent = "arrow_upward";
+          moveUpButton.title = `Move ${track.title} up`;
+          moveUpButton.setAttribute("aria-label", `Move ${track.title} up`);
+          moveUpButton.disabled = index === 0;
+          moveUpButton.addEventListener("click", () => moveTrack(index, index - 1));
+
+          const moveDownButton = document.createElement("button");
+          moveDownButton.type = "button";
+          moveDownButton.classList.add("material-symbols-outlined", "track-reorder");
+          moveDownButton.textContent = "arrow_downward";
+          moveDownButton.title = `Move ${track.title} down`;
+          moveDownButton.setAttribute("aria-label", `Move ${track.title} down`);
+          moveDownButton.disabled = index === tracks.length - 1;
+          moveDownButton.addEventListener("click", () => moveTrack(index, index + 1));
+
+          item.append(button, moveUpButton, moveDownButton);
+          item.addEventListener("dragstart", (event) => {
+            event.dataTransfer.setData("text/plain", String(index));
+            event.dataTransfer.effectAllowed = "move";
+            item.setAttribute("aria-grabbed", "true");
+          });
+          item.addEventListener("dragend", () => item.removeAttribute("aria-grabbed"));
+          item.addEventListener("dragover", (event) => event.preventDefault());
+          item.addEventListener("drop", (event) => {
+            event.preventDefault();
+            const fromIndex = Number(event.dataTransfer.getData("text/plain"));
+            moveTrack(fromIndex, index);
+          });
           trackList.append(item);
         });
         trackSearchStatus.hidden = !query || matchingTracks.length > 0;
@@ -1293,6 +1453,48 @@
         nextButton.disabled = currentIndex < 0 || currentIndex >= tracks.length - 1;
         randomizeButton.disabled = tracks.length < 2;
         playlistSearch.disabled = tracks.length === 0;
+      }
+
+      function moveTrack(fromIndex, toIndex) {
+        if (
+          fromIndex < 0
+          || fromIndex >= tracks.length
+          || toIndex < 0
+          || toIndex >= tracks.length
+          || fromIndex === toIndex
+        ) {
+          return;
+        }
+        const currentTrack = tracks[currentIndex];
+        const [track] = tracks.splice(fromIndex, 1);
+        tracks.splice(toIndex, 0, track);
+        currentIndex = currentTrack ? tracks.indexOf(currentTrack) : -1;
+        renderTracks();
+        scheduleTrackOrderSave();
+      }
+
+      function scheduleTrackOrderSave() {
+        if (!currentPlaylistSaved || !currentPlaylistUrl) {
+          return;
+        }
+        const url = currentPlaylistUrl;
+        const trackOrder = tracks.map((track) => track.id);
+        window.clearTimeout(trackOrderSaveTimer);
+        trackOrderSaveTimer = window.setTimeout(async () => {
+          try {
+            const response = await fetch("/api/saved-playlists", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url, track_order: trackOrder }),
+            });
+            const result = await response.json();
+            if (!response.ok) {
+              throw new Error(result.error || "Could not save playlist order.");
+            }
+          } catch (error) {
+            savedStatus.textContent = error.message;
+          }
+        }, 250);
       }
 
       function clearPlayer() {
@@ -1428,12 +1630,22 @@
         }
         currentIndex = currentTrack ? tracks.indexOf(currentTrack) : -1;
         renderTracks();
+        scheduleTrackOrderSave();
       });
 
-      async function loadPlaylist(url, { allowSave = false } = {}) {
+      async function loadPlaylist(
+        url,
+        {
+          allowSave = false,
+          saved = false,
+          savedTitle = "",
+          trackOrder = [],
+        } = {},
+      ) {
         url = url.trim();
         const loadRequestId = ++playlistLoadRequest;
         ++playbackRequest;
+        window.clearTimeout(trackOrderSaveTimer);
         clearPlayer();
         tracks = [];
         currentIndex = -1;
@@ -1443,6 +1655,7 @@
         currentPlaylistUrl = "";
         currentPlaylistTitle = "";
         canSaveCurrentPlaylist = false;
+        currentPlaylistSaved = saved;
         playlistTitle.textContent = "Loading playlist…";
         saveButton.disabled = true;
         renderTracks();
@@ -1463,14 +1676,19 @@
             return;
           }
 
-          tracks = result.tracks;
+          const trackById = new Map(result.tracks.map((track) => [track.id, track]));
+          const orderedTrackIds = new Set(trackOrder);
+          tracks = [
+            ...trackOrder.map((trackId) => trackById.get(trackId)).filter(Boolean),
+            ...result.tracks.filter((track) => !orderedTrackIds.has(track.id)),
+          ];
           currentPlaylistUrl = url;
-          currentPlaylistTitle = result.title;
+          currentPlaylistTitle = savedTitle || result.title;
           canSaveCurrentPlaylist = allowSave;
-          playlistTitle.textContent = `${result.title} (${tracks.length} songs)`;
+          playlistTitle.textContent = `${currentPlaylistTitle} (${tracks.length} songs)`;
           saveButton.disabled = !canSaveCurrentPlaylist;
           renderTracks();
-          status.textContent = `${result.title} — ${tracks.length} tracks`;
+          status.textContent = `${currentPlaylistTitle} — ${tracks.length} tracks`;
         } catch (error) {
           if (loadRequestId === playlistLoadRequest) {
             playlistTitle.textContent = "No playlist loaded";
@@ -1490,30 +1708,190 @@
           throw new Error(result.error || "Could not load saved playlists.");
         }
 
+        savedPlaylists = result.playlists;
+        renderSavedPlaylists();
+        savedStatus.textContent = savedPlaylists.length
+          ? `${savedPlaylists.length} saved playlist(s).`
+          : "No saved playlists yet.";
+      }
+
+      function renderSavedPlaylists() {
         savedList.replaceChildren();
-        result.playlists.forEach((playlist) => {
+        savedPlaylists.forEach((playlist, index) => {
           const item = document.createElement("li");
           const openButton = document.createElement("button");
           openButton.type = "button";
+          openButton.classList.add("saved-playlist-title");
           openButton.textContent = playlist.title;
-          openButton.addEventListener("click", () => loadPlaylist(playlist.url));
+          openButton.addEventListener("click", () => loadPlaylist(playlist.url, {
+            saved: true,
+            savedTitle: playlist.title,
+            trackOrder: playlist.track_order || [],
+          }));
+
+          const dragHandle = document.createElement("span");
+          dragHandle.classList.add("saved-playlist-drag-handle");
+          dragHandle.draggable = true;
+          dragHandle.title = `Drag to reorder ${playlist.title}`;
+          dragHandle.setAttribute("role", "button");
+          dragHandle.setAttribute("tabindex", "0");
+          dragHandle.setAttribute("aria-label", `Reorder ${playlist.title}`);
+          dragHandle.addEventListener("dragstart", (event) => {
+            event.dataTransfer.setData("text/plain", String(index));
+            event.dataTransfer.effectAllowed = "move";
+            item.setAttribute("aria-grabbed", "true");
+          });
+          dragHandle.addEventListener("dragend", () => {
+            item.removeAttribute("aria-grabbed");
+          });
+          dragHandle.addEventListener("keydown", (event) => {
+            if (event.key === "ArrowUp" && index > 0) {
+              event.preventDefault();
+              moveSavedPlaylist(index, index - 1);
+            } else if (event.key === "ArrowDown" && index < savedPlaylists.length - 1) {
+              event.preventDefault();
+              moveSavedPlaylist(index, index + 1);
+            }
+          });
+
+          const renameButton = document.createElement("button");
+          renameButton.type = "button";
+          renameButton.classList.add("material-symbols-outlined", "saved-playlist-action");
+          renameButton.textContent = "edit";
+          renameButton.title = `Rename ${playlist.title}`;
+          renameButton.setAttribute("aria-label", `Rename ${playlist.title}`);
+          renameButton.addEventListener("click", () => {
+            renameSavedPlaylist(playlist, item, [
+              dragHandle,
+              openButton,
+              renameButton,
+              removeButton,
+            ]);
+          });
 
           const removeButton = document.createElement("button");
           removeButton.type = "button";
-          removeButton.classList.add("material-symbols-outlined");
+          removeButton.classList.add("material-symbols-outlined", "saved-playlist-action");
           removeButton.textContent = "delete";
           removeButton.title = `Remove ${playlist.title}`;
           removeButton.setAttribute("aria-label", `Remove ${playlist.title}`);
           removeButton.addEventListener("click", () => removeSavedPlaylist(playlist.url));
-          item.append(openButton, removeButton);
+          item.addEventListener("dragover", (event) => event.preventDefault());
+          item.addEventListener("drop", (event) => {
+            event.preventDefault();
+            const fromIndex = Number(event.dataTransfer.getData("text/plain"));
+            moveSavedPlaylist(fromIndex, index);
+          });
+          item.append(
+            dragHandle,
+            openButton,
+            renameButton,
+            removeButton,
+          );
           savedList.append(item);
         });
-        savedStatus.textContent = result.playlists.length
-          ? `${result.playlists.length} saved playlist(s).`
-          : "No saved playlists yet.";
+      }
+
+      async function moveSavedPlaylist(fromIndex, toIndex) {
+        if (
+          fromIndex < 0
+          || fromIndex >= savedPlaylists.length
+          || toIndex < 0
+          || toIndex >= savedPlaylists.length
+        ) {
+          return;
+        }
+        const [playlist] = savedPlaylists.splice(fromIndex, 1);
+        savedPlaylists.splice(toIndex, 0, playlist);
+        renderSavedPlaylists();
+        try {
+          const playlistOrder = savedPlaylists.map((item) => item.url);
+          const response = await fetch("/api/saved-playlists", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: playlistOrder[0],
+              playlist_order: playlistOrder,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not save playlist order.");
+          }
+          savedPlaylists = result.playlists;
+          renderSavedPlaylists();
+        } catch (error) {
+          await refreshSavedPlaylists();
+          savedStatus.textContent = error.message;
+        }
+      }
+
+      function renameSavedPlaylist(playlist, item, originalButtons) {
+        const form = document.createElement("form");
+        form.classList.add("saved-playlist-rename");
+        const titleInput = document.createElement("input");
+        titleInput.type = "text";
+        titleInput.value = playlist.title;
+        titleInput.maxLength = 200;
+        titleInput.required = true;
+        titleInput.setAttribute("aria-label", `New name for ${playlist.title}`);
+
+        const saveRenameButton = document.createElement("button");
+        saveRenameButton.type = "submit";
+        saveRenameButton.classList.add("material-symbols-outlined", "saved-playlist-action");
+        saveRenameButton.textContent = "check";
+        saveRenameButton.title = "Save playlist name";
+        saveRenameButton.setAttribute("aria-label", "Save playlist name");
+
+        const cancelRenameButton = document.createElement("button");
+        cancelRenameButton.type = "button";
+        cancelRenameButton.classList.add("material-symbols-outlined", "saved-playlist-action");
+        cancelRenameButton.textContent = "close";
+        cancelRenameButton.title = "Cancel renaming";
+        cancelRenameButton.setAttribute("aria-label", "Cancel renaming");
+        cancelRenameButton.addEventListener("click", () => {
+          item.replaceChildren(...originalButtons);
+        });
+
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const title = titleInput.value.trim();
+          if (!title) {
+            titleInput.focus();
+            return;
+          }
+          saveRenameButton.disabled = true;
+          try {
+            const response = await fetch("/api/saved-playlists", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: playlist.url, title }),
+            });
+            const result = await response.json();
+            if (!response.ok) {
+              throw new Error(result.error || "Could not rename the playlist.");
+            }
+            if (currentPlaylistUrl === playlist.url) {
+              currentPlaylistTitle = result.playlist.title;
+              playlistTitle.textContent = `${currentPlaylistTitle} (${tracks.length} songs)`;
+            }
+            await refreshSavedPlaylists();
+          } catch (error) {
+            savedStatus.textContent = error.message;
+            saveRenameButton.disabled = false;
+          }
+        });
+        form.append(titleInput, saveRenameButton, cancelRenameButton);
+        item.replaceChildren(form);
+        titleInput.focus();
+        titleInput.select();
       }
 
       async function removeSavedPlaylist(url) {
+        const playlist = savedPlaylists.find((item) => item.url === url);
+        if (!playlist || !(await confirmDeleteSavedPlaylist(playlist.title))) {
+          return;
+        }
         try {
           const response = await fetch("/api/saved-playlists", {
             method: "DELETE",
@@ -1524,10 +1902,26 @@
           if (!response.ok) {
             throw new Error(result.error || "Could not remove the playlist.");
           }
+          if (currentPlaylistUrl === url) {
+            currentPlaylistSaved = false;
+            window.clearTimeout(trackOrderSaveTimer);
+          }
           await refreshSavedPlaylists();
         } catch (error) {
           savedStatus.textContent = error.message;
         }
+      }
+
+      function confirmDeleteSavedPlaylist(title) {
+        deletePlaylistMessage.textContent = `Delete “${title}” from your saved playlists?`;
+        deletePlaylistDialog.showModal();
+        return new Promise((resolve) => {
+          deletePlaylistDialog.addEventListener(
+            "close",
+            () => resolve(deletePlaylistDialog.returnValue === "delete"),
+            { once: true },
+          );
+        });
       }
 
       form.addEventListener("submit", (event) => {
@@ -1551,6 +1945,7 @@
             body: JSON.stringify({
               title: currentPlaylistTitle,
               url: currentPlaylistUrl,
+              track_order: tracks.map((track) => track.id),
             }),
           });
           const result = await response.json();
@@ -1558,6 +1953,7 @@
             throw new Error(result.error || "Could not save the playlist.");
           }
           await refreshSavedPlaylists();
+          currentPlaylistSaved = true;
           savedStatus.textContent = result.updated
             ? "Updated saved playlist."
             : "Playlist saved.";

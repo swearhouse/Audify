@@ -124,6 +124,10 @@ def test_homepage_renders_player(client):
     assert b"&& !castCompletionHandled" in response.data
     assert b"castCompletionHandled = true;" in response.data
     assert b'id="saved-playlists"' in response.data
+    assert b'<dialog id="delete-playlist-dialog"' in response.data
+    assert b'value="cancel">Cancel</button>' in response.data
+    assert b'value="delete">Delete</button>' in response.data
+    assert b"confirmDeleteSavedPlaylist(playlist.title)" in response.data
     assert b'id="save-button"' in response.data
     assert b'id="randomize-button"' in response.data
     assert b'id="logout-button"' in response.data
@@ -135,6 +139,21 @@ def test_homepage_renders_player(client):
     assert b'id="track-search-status" role="status" aria-live="polite" hidden' in response.data
     assert b'playlistSearch.addEventListener("input", renderTracks);' in response.data
     assert b'.filter(({ track }) => track.title.toLocaleLowerCase().includes(query));' in response.data
+    assert b'"track-reorder"' in response.data
+    assert b'item.addEventListener("drop"' in response.data
+    assert b"function moveTrack(fromIndex, toIndex)" in response.data
+    assert b"function renameSavedPlaylist(playlist, item, originalButtons)" in response.data
+    assert b"async function moveSavedPlaylist(fromIndex, toIndex)" in response.data
+    assert b'classList.add("saved-playlist-drag-handle")' in response.data
+    assert b'dragHandle.draggable = true;' in response.data
+    assert b'event.key === "ArrowUp"' in response.data
+    assert b'event.key === "ArrowDown"' in response.data
+    assert b"Move Playlist 1 up" not in response.data
+    assert b"Move Playlist 1 down" not in response.data
+    assert b'body: JSON.stringify({\n              url: playlistOrder[0],\n              playlist_order: playlistOrder,\n            })' in response.data
+    assert b".saved-playlist-rename .saved-playlist-action" in response.data
+    assert b'window.prompt("Rename saved playlist:"' not in response.data
+    assert b'method: "PUT"' in response.data
     assert b"(${tracks.length} songs)" in response.data
     assert b"const maxAudioLoadRetries = 2;" in response.data
     assert b"advanceTrack(index + 1);" in response.data
@@ -153,6 +172,7 @@ def test_homepage_requires_login(app):
     [
         ("get", "/api/saved-playlists"),
         ("post", "/api/saved-playlists"),
+        ("put", "/api/saved-playlists"),
         ("delete", "/api/saved-playlists"),
         ("post", "/api/playlist"),
         ("post", "/api/resolve"),
@@ -482,6 +502,11 @@ def test_saved_playlists_are_isolated_between_users(app, client):
         json={"url": playlist_url},
     )
     assert denied_removal.status_code == 404
+    denied_update = guest_client.put(
+        "/api/saved-playlists",
+        json={"url": playlist_url, "title": "Guest rename"},
+    )
+    assert denied_update.status_code == 404
 
 
 def test_existing_shared_playlist_file_is_untouched_and_not_migrated(
@@ -523,6 +548,127 @@ def test_saved_playlist_can_be_removed(tmp_path, app, client):
 
     assert response.status_code == 200
     assert response.json == {"playlists": []}
+
+
+def test_saved_playlist_can_be_renamed_and_reordered(client, tmp_path, app):
+    app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "user_playlists.json"
+    playlist_url = "https://www.youtube.com/playlist?list=example"
+    saved = client.post(
+        "/api/saved-playlists",
+        json={
+            "title": "Original",
+            "url": playlist_url,
+            "track_order": ["video_1", "video_2"],
+        },
+    )
+    assert saved.status_code == 200
+
+    renamed = client.put(
+        "/api/saved-playlists",
+        json={"url": playlist_url, "title": "Renamed"},
+    )
+    reordered = client.put(
+        "/api/saved-playlists",
+        json={"url": playlist_url, "track_order": ["video_2", "video_1"]},
+    )
+
+    assert renamed.status_code == 200
+    assert renamed.json["playlist"]["title"] == "Renamed"
+    assert reordered.status_code == 200
+    assert reordered.json["playlist"]["track_order"] == ["video_2", "video_1"]
+    assert client.get("/api/saved-playlists").json == {
+        "playlists": [
+            {
+                "title": "Renamed",
+                "url": playlist_url,
+                "track_order": ["video_2", "video_1"],
+            }
+        ]
+    }
+
+
+def test_saved_playlist_update_validates_title_and_track_order(client):
+    playlist_url = "https://www.youtube.com/playlist?list=example"
+    client.post(
+        "/api/saved-playlists",
+        json={"title": "Original", "url": playlist_url},
+    )
+
+    invalid_title = client.put(
+        "/api/saved-playlists",
+        json={"url": playlist_url, "title": "  "},
+    )
+    invalid_order = client.put(
+        "/api/saved-playlists",
+        json={"url": playlist_url, "track_order": ["duplicate", "duplicate"]},
+    )
+    missing_playlist = client.put(
+        "/api/saved-playlists",
+        json={
+            "url": "https://www.youtube.com/playlist?list=missing",
+            "title": "Missing",
+        },
+    )
+
+    assert invalid_title.status_code == 400
+    assert invalid_order.status_code == 400
+    assert missing_playlist.status_code == 404
+
+
+def test_saved_playlists_can_be_reordered(client):
+    urls = [
+        f"https://www.youtube.com/playlist?list={playlist_id}"
+        for playlist_id in ("first", "second", "third")
+    ]
+    for title, url in zip(("First", "Second", "Third"), urls):
+        response = client.post(
+            "/api/saved-playlists",
+            json={"title": title, "url": url},
+        )
+        assert response.status_code == 200
+
+    response = client.put(
+        "/api/saved-playlists",
+        json={
+            "url": urls[2],
+            "playlist_order": [urls[2], urls[0], urls[1]],
+        },
+    )
+
+    assert response.status_code == 200
+    assert [playlist["url"] for playlist in response.json["playlists"]] == [
+        urls[2],
+        urls[0],
+        urls[1],
+    ]
+    assert [
+        playlist["title"]
+        for playlist in client.get("/api/saved-playlists").json["playlists"]
+    ] == ["Third", "First", "Second"]
+
+
+def test_saved_playlist_order_rejects_duplicates_and_unknown_urls(client):
+    urls = [
+        f"https://www.youtube.com/playlist?list={playlist_id}"
+        for playlist_id in ("first", "second")
+    ]
+    for title, url in zip(("First", "Second"), urls):
+        client.post("/api/saved-playlists", json={"title": title, "url": url})
+
+    duplicate = client.put(
+        "/api/saved-playlists",
+        json={"url": urls[0], "playlist_order": [urls[0], urls[0]]},
+    )
+    unknown = client.put(
+        "/api/saved-playlists",
+        json={
+            "url": urls[0],
+            "playlist_order": ["https://www.youtube.com/playlist?list=unknown"],
+        },
+    )
+
+    assert duplicate.status_code == 400
+    assert unknown.status_code == 404
 
 
 def test_saved_playlist_rejects_invalid_url(tmp_path, app, client):

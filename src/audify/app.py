@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import tempfile
 from pathlib import Path
 from threading import Lock
@@ -20,6 +21,7 @@ YOUTUBE_HOSTS = {
     "m.youtube.com",
     "music.youtube.com",
 }
+YOUTUBE_VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 AUDIO_MIME_TYPES = {
     "aac": "audio/aac",
     "flac": "audio/flac",
@@ -105,6 +107,28 @@ def is_youtube_url(value: str) -> bool:
         return False
 
 
+def is_valid_track_order(value: object) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) <= 5000
+        and all(
+            isinstance(video_id, str)
+            and YOUTUBE_VIDEO_ID_PATTERN.fullmatch(video_id)
+            for video_id in value
+        )
+        and len(value) == len(set(value))
+    )
+
+
+def is_valid_playlist_order(value: object) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) <= 5000
+        and all(isinstance(url, str) and is_youtube_url(url) for url in value)
+        and len(value) == len(set(value))
+    )
+
+
 def get_thumbnail_url(entry: dict) -> str | None:
     thumbnails = entry.get("thumbnails")
     candidates = thumbnails if isinstance(thumbnails, list) else []
@@ -152,6 +176,10 @@ def read_library(path: Path) -> dict[str, list[dict[str, str]]]:
             not isinstance(item, dict)
             or not isinstance(item.get("title"), str)
             or not isinstance(item.get("url"), str)
+            or (
+                "track_order" in item
+                and not is_valid_track_order(item["track_order"])
+            )
             for item in playlists
         )
         for username, playlists in library.items()
@@ -280,15 +308,23 @@ def create_app() -> Flask:
             return jsonify(error="Provide a playlist title and YouTube URL."), 400
         title = payload.get("title")
         url = payload.get("url")
+        track_order = payload.get("track_order")
         if (
             not isinstance(title, str)
             or not title.strip()
+            or len(title.strip()) > 200
             or not isinstance(url, str)
             or not is_youtube_url(url)
+            or (
+                "track_order" in payload
+                and not is_valid_track_order(track_order)
+            )
         ):
             return jsonify(error="Provide a playlist title and valid HTTPS YouTube URL."), 400
 
         playlist = {"title": title.strip(), "url": url.strip()}
+        if "track_order" in payload:
+            playlist["track_order"] = track_order
         try:
             with LIBRARY_LOCK:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
@@ -300,6 +336,8 @@ def create_app() -> Flask:
                 )
                 if existing:
                     existing["title"] = playlist["title"]
+                    if "track_order" in playlist:
+                        existing["track_order"] = playlist["track_order"]
                 else:
                     playlists.append(playlist)
                 libraries[session["username"]] = playlists
@@ -308,6 +346,71 @@ def create_app() -> Flask:
             app.logger.exception("Could not save playlist")
             return jsonify(error="Could not save the playlist."), 500
         return jsonify(playlist=playlist, updated=existing is not None), 200
+
+    @app.put("/api/saved-playlists")
+    def update_saved_playlist():
+        payload = request.get_json(silent=True)
+        url = payload.get("url") if isinstance(payload, dict) else None
+        title = payload.get("title") if isinstance(payload, dict) else None
+        track_order = payload.get("track_order") if isinstance(payload, dict) else None
+        playlist_order = payload.get("playlist_order") if isinstance(payload, dict) else None
+        if not isinstance(url, str) or not is_youtube_url(url):
+            return jsonify(error="Provide a valid HTTPS YouTube URL."), 400
+        if (
+            not isinstance(payload, dict)
+            or not any(
+                key in payload
+                for key in ("title", "track_order", "playlist_order")
+            )
+            or (
+                "title" in payload
+                and (
+                    not isinstance(title, str)
+                    or not title.strip()
+                    or len(title.strip()) > 200
+                )
+            )
+            or (
+                "track_order" in payload
+                and not is_valid_track_order(track_order)
+            )
+            or (
+                "playlist_order" in payload
+                and not is_valid_playlist_order(playlist_order)
+            )
+        ):
+            return jsonify(error="Provide a valid playlist title or track order."), 400
+
+        try:
+            with LIBRARY_LOCK:
+                path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
+                libraries = read_library(path)
+                playlists = libraries.get(session["username"], [])
+                existing = next(
+                    (item for item in playlists if item["url"] == url.strip()),
+                    None,
+                )
+                if existing is None:
+                    return jsonify(error="Saved playlist was not found."), 404
+                if "playlist_order" in payload:
+                    playlist_urls = {item["url"] for item in playlists}
+                    if not set(playlist_order).issubset(playlist_urls):
+                        return jsonify(error="Playlist order contains an unknown playlist."), 404
+                    ordered_urls = set(playlist_order)
+                    playlist_by_url = {item["url"]: item for item in playlists}
+                    playlists[:] = [
+                        *(playlist_by_url[url] for url in playlist_order),
+                        *(item for item in playlists if item["url"] not in ordered_urls),
+                    ]
+                if "title" in payload:
+                    existing["title"] = title.strip()
+                if "track_order" in payload:
+                    existing["track_order"] = track_order
+                write_library(path, libraries)
+        except LibraryStorageError:
+            app.logger.exception("Could not update saved playlist")
+            return jsonify(error="Could not update the saved playlist."), 500
+        return jsonify(playlist=existing, playlists=playlists)
 
     @app.delete("/api/saved-playlists")
     def remove_saved_playlist():
