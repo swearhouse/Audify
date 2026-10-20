@@ -3,11 +3,12 @@
 Bragi is a small, self-hosted web audio player for a trusted home network.
 Paste a YouTube video or playlist URL to load its tracks, then select a track
 to play it in your browser. Bragi supports play/pause, stop, seeking,
-previous/next playback, volume, shuffle, searching track titles in the loaded
-playlist, track reordering, track thumbnails, and a saved-playlist library that
-is separate for each user. Saved playlists can be renamed and reordered, and
-each saved playlist's custom track order is preserved. It resolves streams when
-you play a track; it does not download or store audio.
+previous/next playback, volume, searching track titles in the loaded playlist,
+track thumbnails, and a saved-playlist library that is separate for each user.
+Saved playlists can be renamed and reordered. Songs play in the order returned
+by the source playlist. Bragi resolves streams when you play a track; it does
+not download or store audio. Loading another playlist while audio is playing
+keeps the current track playing, then continues with the new playlist.
 
 Bragi requires a username and password to use the app and its APIs. It is
 intended for a trusted local network, not direct public exposure. The app uses
@@ -61,8 +62,9 @@ Bragi uses a data directory for account and playlist JSON files:
 
 - `users.json` is created on the first login attempt.
 - `user_playlists.json` is created when a user first saves a playlist. It
-  contains separate playlist lists keyed by username, including optional
-  saved titles and custom track orders.
+  contains separate playlist lists keyed by username. Each saved entry stores
+  only its title and playlist URL; songs are loaded from YouTube and are not
+  stored in this file.
 - The older shared `playlists.json`, if present, is left untouched and is not
   imported into per-user libraries.
 

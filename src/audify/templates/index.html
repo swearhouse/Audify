@@ -482,10 +482,6 @@
         text-align: right;
       }
 
-      #randomize-button {
-        white-space: nowrap;
-      }
-
       .queue-card {
         display: flex;
         flex: none;
@@ -578,7 +574,6 @@
         white-space: nowrap;
       }
 
-      #tracks .track-reorder,
       #saved-playlists .saved-playlist-action {
         display: inline-grid;
         width: 34px;
@@ -587,14 +582,6 @@
         padding: 0;
         place-items: center;
         color: #8996a8;
-      }
-
-      #tracks .track-reorder:disabled {
-        opacity: 0.35;
-      }
-
-      #tracks li[aria-grabbed="true"] {
-        opacity: 0.55;
       }
 
       #tracks .track-select::before {
@@ -894,16 +881,6 @@
           <div class="queue-heading">
             <h2 id="queue-heading">Playlist</h2>
             <span id="playlist-title">No playlist loaded</span>
-            <button
-              id="randomize-button"
-              class="icon-button"
-              type="button"
-              disabled
-              title="Shuffle playlist"
-              aria-label="Shuffle playlist"
-            >
-              <span class="material-symbols-outlined" aria-hidden="true">shuffle</span>
-            </button>
           </div>
           <input
             id="playlist-search"
@@ -942,7 +919,6 @@
       const loadButton = document.querySelector("#load-button");
       const previousButton = document.querySelector("#previous-button");
       const nextButton = document.querySelector("#next-button");
-      const randomizeButton = document.querySelector("#randomize-button");
       const trackList = document.querySelector("#tracks");
       const playlistSearch = document.querySelector("#playlist-search");
       const trackSearchStatus = document.querySelector("#track-search-status");
@@ -978,8 +954,6 @@
       let currentPlaylistUrl = "";
       let currentPlaylistTitle = "";
       let canSaveCurrentPlaylist = false;
-      let currentPlaylistSaved = false;
-      let trackOrderSaveTimer = null;
       let savedPlaylists = [];
       let castContext = null;
       let castSession = null;
@@ -1402,8 +1376,6 @@
 
         matchingTracks.forEach(({ track, index }) => {
           const item = document.createElement("li");
-          item.draggable = true;
-          item.dataset.trackIndex = String(index);
           const button = document.createElement("button");
           button.type = "button";
           button.classList.add("track-select");
@@ -1411,38 +1383,7 @@
           button.setAttribute("data-track-number", String(index + 1));
           button.setAttribute("aria-current", String(index === currentIndex));
           button.addEventListener("click", () => selectTrack(index));
-
-          const moveUpButton = document.createElement("button");
-          moveUpButton.type = "button";
-          moveUpButton.classList.add("material-symbols-outlined", "track-reorder");
-          moveUpButton.textContent = "arrow_upward";
-          moveUpButton.title = `Move ${track.title} up`;
-          moveUpButton.setAttribute("aria-label", `Move ${track.title} up`);
-          moveUpButton.disabled = index === 0;
-          moveUpButton.addEventListener("click", () => moveTrack(index, index - 1));
-
-          const moveDownButton = document.createElement("button");
-          moveDownButton.type = "button";
-          moveDownButton.classList.add("material-symbols-outlined", "track-reorder");
-          moveDownButton.textContent = "arrow_downward";
-          moveDownButton.title = `Move ${track.title} down`;
-          moveDownButton.setAttribute("aria-label", `Move ${track.title} down`);
-          moveDownButton.disabled = index === tracks.length - 1;
-          moveDownButton.addEventListener("click", () => moveTrack(index, index + 1));
-
-          item.append(button, moveUpButton, moveDownButton);
-          item.addEventListener("dragstart", (event) => {
-            event.dataTransfer.setData("text/plain", String(index));
-            event.dataTransfer.effectAllowed = "move";
-            item.setAttribute("aria-grabbed", "true");
-          });
-          item.addEventListener("dragend", () => item.removeAttribute("aria-grabbed"));
-          item.addEventListener("dragover", (event) => event.preventDefault());
-          item.addEventListener("drop", (event) => {
-            event.preventDefault();
-            const fromIndex = Number(event.dataTransfer.getData("text/plain"));
-            moveTrack(fromIndex, index);
-          });
+          item.append(button);
           trackList.append(item);
         });
         trackSearchStatus.hidden = !query || matchingTracks.length > 0;
@@ -1451,50 +1392,7 @@
           : "";
         previousButton.disabled = currentIndex <= 0;
         nextButton.disabled = currentIndex < 0 || currentIndex >= tracks.length - 1;
-        randomizeButton.disabled = tracks.length < 2;
         playlistSearch.disabled = tracks.length === 0;
-      }
-
-      function moveTrack(fromIndex, toIndex) {
-        if (
-          fromIndex < 0
-          || fromIndex >= tracks.length
-          || toIndex < 0
-          || toIndex >= tracks.length
-          || fromIndex === toIndex
-        ) {
-          return;
-        }
-        const currentTrack = tracks[currentIndex];
-        const [track] = tracks.splice(fromIndex, 1);
-        tracks.splice(toIndex, 0, track);
-        currentIndex = currentTrack ? tracks.indexOf(currentTrack) : -1;
-        renderTracks();
-        scheduleTrackOrderSave();
-      }
-
-      function scheduleTrackOrderSave() {
-        if (!currentPlaylistSaved || !currentPlaylistUrl) {
-          return;
-        }
-        const url = currentPlaylistUrl;
-        const trackOrder = tracks.map((track) => track.id);
-        window.clearTimeout(trackOrderSaveTimer);
-        trackOrderSaveTimer = window.setTimeout(async () => {
-          try {
-            const response = await fetch("/api/saved-playlists", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url, track_order: trackOrder }),
-            });
-            const result = await response.json();
-            if (!response.ok) {
-              throw new Error(result.error || "Could not save playlist order.");
-            }
-          } catch (error) {
-            savedStatus.textContent = error.message;
-          }
-        }, 250);
       }
 
       function clearPlayer() {
@@ -1622,45 +1520,27 @@
         }
       }
 
-      randomizeButton.addEventListener("click", () => {
-        const currentTrack = tracks[currentIndex];
-        for (let index = tracks.length - 1; index > 0; index -= 1) {
-          const randomIndex = Math.floor(Math.random() * (index + 1));
-          [tracks[index], tracks[randomIndex]] = [tracks[randomIndex], tracks[index]];
+      function getSavedPlaylistUrl(value) {
+        try {
+          const playlistId = new URL(value).searchParams.get("list");
+          return playlistId
+            ? `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`
+            : null;
+        } catch {
+          return null;
         }
-        currentIndex = currentTrack ? tracks.indexOf(currentTrack) : -1;
-        renderTracks();
-        scheduleTrackOrderSave();
-      });
+      }
 
       async function loadPlaylist(
         url,
         {
           allowSave = false,
-          saved = false,
           savedTitle = "",
-          trackOrder = [],
         } = {},
       ) {
         url = url.trim();
         const loadRequestId = ++playlistLoadRequest;
-        ++playbackRequest;
-        window.clearTimeout(trackOrderSaveTimer);
-        clearPlayer();
-        tracks = [];
-        currentIndex = -1;
-        playlistSearch.value = "";
-        trackSearchStatus.hidden = true;
-        trackSearchStatus.textContent = "";
-        currentPlaylistUrl = "";
-        currentPlaylistTitle = "";
-        canSaveCurrentPlaylist = false;
-        currentPlaylistSaved = saved;
-        playlistTitle.textContent = "Loading playlist…";
-        saveButton.disabled = true;
-        renderTracks();
         loadButton.disabled = true;
-        status.textContent = "Loading playlist…";
 
         try {
           const response = await fetch("/api/playlist", {
@@ -1676,22 +1556,28 @@
             return;
           }
 
-          const trackById = new Map(result.tracks.map((track) => [track.id, track]));
-          const orderedTrackIds = new Set(trackOrder);
-          tracks = [
-            ...trackOrder.map((trackId) => trackById.get(trackId)).filter(Boolean),
-            ...result.tracks.filter((track) => !orderedTrackIds.has(track.id)),
-          ];
-          currentPlaylistUrl = url;
+          const playbackContinues = castSession
+            ? Boolean(remotePlayer && remotePlayer.isMediaLoaded && !remotePlayer.isPaused)
+            : Boolean(resolvedMedia && !player.paused && !player.ended);
+          ++playbackRequest;
+          tracks = result.tracks;
+          currentIndex = -1;
+          playlistSearch.value = "";
+          trackSearchStatus.hidden = true;
+          trackSearchStatus.textContent = "";
+          const savedPlaylistUrl = getSavedPlaylistUrl(url);
+          currentPlaylistUrl = savedPlaylistUrl || url;
           currentPlaylistTitle = savedTitle || result.title;
-          canSaveCurrentPlaylist = allowSave;
+          canSaveCurrentPlaylist = allowSave && savedPlaylistUrl !== null;
           playlistTitle.textContent = `${currentPlaylistTitle} (${tracks.length} songs)`;
           saveButton.disabled = !canSaveCurrentPlaylist;
           renderTracks();
-          status.textContent = `${currentPlaylistTitle} — ${tracks.length} tracks`;
+          updatePlaybackControls();
+          if (!playbackContinues) {
+            status.textContent = `${currentPlaylistTitle} — ${tracks.length} tracks`;
+          }
         } catch (error) {
           if (loadRequestId === playlistLoadRequest) {
-            playlistTitle.textContent = "No playlist loaded";
             status.textContent = error.message;
           }
         } finally {
@@ -1724,9 +1610,7 @@
           openButton.classList.add("saved-playlist-title");
           openButton.textContent = playlist.title;
           openButton.addEventListener("click", () => loadPlaylist(playlist.url, {
-            saved: true,
             savedTitle: playlist.title,
-            trackOrder: playlist.track_order || [],
           }));
 
           const dragHandle = document.createElement("span");
@@ -1902,10 +1786,6 @@
           if (!response.ok) {
             throw new Error(result.error || "Could not remove the playlist.");
           }
-          if (currentPlaylistUrl === url) {
-            currentPlaylistSaved = false;
-            window.clearTimeout(trackOrderSaveTimer);
-          }
           await refreshSavedPlaylists();
         } catch (error) {
           savedStatus.textContent = error.message;
@@ -1945,7 +1825,6 @@
             body: JSON.stringify({
               title: currentPlaylistTitle,
               url: currentPlaylistUrl,
-              track_order: tracks.map((track) => track.id),
             }),
           });
           const result = await response.json();
@@ -1953,7 +1832,6 @@
             throw new Error(result.error || "Could not save the playlist.");
           }
           await refreshSavedPlaylists();
-          currentPlaylistSaved = true;
           savedStatus.textContent = result.updated
             ? "Updated saved playlist."
             : "Playlist saved.";

@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import pytest
@@ -101,10 +102,10 @@ def test_homepage_renders_player(client):
     assert b">cast</span>" in response.data
     assert b">playlist_play</span>" in response.data
     assert b">bookmark_add</span>" in response.data
-    assert b">shuffle</span>" in response.data
     assert b'<span>Save</span>' in response.data
     assert b"Randomize</span>" not in response.data
-    assert b'aria-label="Shuffle playlist"' in response.data
+    assert b"shuffle" not in response.data
+    assert b"randomize-button" not in response.data
     assert b"place-items: center;" in response.data
     assert b'removeButton.textContent = "delete";' in response.data
     assert b'id="logout-button"' in response.data
@@ -129,7 +130,6 @@ def test_homepage_renders_player(client):
     assert b'value="delete">Delete</button>' in response.data
     assert b"confirmDeleteSavedPlaylist(playlist.title)" in response.data
     assert b'id="save-button"' in response.data
-    assert b'id="randomize-button"' in response.data
     assert b'id="logout-button"' in response.data
     assert b"Signed in as <strong>admin</strong>" in response.data
     assert b'id="tracks"' in response.data
@@ -139,9 +139,10 @@ def test_homepage_renders_player(client):
     assert b'id="track-search-status" role="status" aria-live="polite" hidden' in response.data
     assert b'playlistSearch.addEventListener("input", renderTracks);' in response.data
     assert b'.filter(({ track }) => track.title.toLocaleLowerCase().includes(query));' in response.data
-    assert b'"track-reorder"' in response.data
-    assert b'item.addEventListener("drop"' in response.data
-    assert b"function moveTrack(fromIndex, toIndex)" in response.data
+    assert b"track-drag-handle" not in response.data
+    assert b"function moveTrack(" not in response.data
+    assert b"randomize" not in response.data
+    assert b"shuffle" not in response.data
     assert b"function renameSavedPlaylist(playlist, item, originalButtons)" in response.data
     assert b"async function moveSavedPlaylist(fromIndex, toIndex)" in response.data
     assert b'classList.add("saved-playlist-drag-handle")' in response.data
@@ -158,6 +159,14 @@ def test_homepage_renders_player(client):
     assert b"const maxAudioLoadRetries = 2;" in response.data
     assert b"advanceTrack(index + 1);" in response.data
     assert b"await playTrack(0);" not in response.data
+    playlist_loader = response.data.split(b"async function loadPlaylist(", 1)[1].split(
+        b"async function refreshSavedPlaylists", 1
+    )[0]
+    assert b"clearPlayer();" not in playlist_loader
+    assert b"if (!playbackContinues)" in playlist_loader
+    assert b"currentIndex = -1;" in playlist_loader
+    assert b"++playbackRequest;" in playlist_loader
+    assert b'playlistTitle.textContent = "No playlist loaded";' not in playlist_loader
 
 
 def test_homepage_requires_login(app):
@@ -460,6 +469,50 @@ def test_saved_playlists_persist_and_update_duplicate_urls(tmp_path, app, client
     assert '"admin"' in library_path.read_text(encoding="utf-8")
 
 
+def test_saved_playlist_stores_only_playlist_reference(tmp_path, app, client):
+    library_path = tmp_path / "user_playlists.json"
+    app.config["PLAYLIST_LIBRARY_PATH"] = library_path
+    response = client.post(
+        "/api/saved-playlists",
+        json={
+            "title": "Example",
+            "url": "https://www.youtube.com/watch?v=video-secret-id&list=playlist-id&index=3",
+            "tracks": [{"id": "video-secret-id", "title": "Song title"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json["playlist"] == {
+        "title": "Example",
+        "url": "https://www.youtube.com/playlist?list=playlist-id",
+    }
+    stored_text = library_path.read_text(encoding="utf-8")
+    assert "video-secret-id" not in stored_text
+    assert "Song title" not in stored_text
+    assert "tracks" not in stored_text
+    assert "track_order" not in stored_text
+    assert json.loads(stored_text) == {
+        "admin": [
+            {
+                "title": "Example",
+                "url": "https://www.youtube.com/playlist?list=playlist-id",
+            }
+        ]
+    }
+
+
+def test_saved_playlist_rejects_single_video_url(client):
+    response = client.post(
+        "/api/saved-playlists",
+        json={
+            "title": "Single video",
+            "url": "https://www.youtube.com/watch?v=video-secret-id",
+        },
+    )
+
+    assert response.status_code == 400
+
+
 def test_saved_playlists_are_isolated_between_users(app, client):
     playlist_url = "https://www.youtube.com/playlist?list=admin-list"
     saved = client.post(
@@ -550,44 +603,34 @@ def test_saved_playlist_can_be_removed(tmp_path, app, client):
     assert response.json == {"playlists": []}
 
 
-def test_saved_playlist_can_be_renamed_and_reordered(client, tmp_path, app):
+def test_saved_playlist_can_be_renamed_without_song_order(client, tmp_path, app):
     app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "user_playlists.json"
     playlist_url = "https://www.youtube.com/playlist?list=example"
     saved = client.post(
         "/api/saved-playlists",
-        json={
-            "title": "Original",
-            "url": playlist_url,
-            "track_order": ["video_1", "video_2"],
-        },
+        json={"title": "Original", "url": playlist_url},
     )
     assert saved.status_code == 200
+    assert client.get("/api/saved-playlists").json == {
+        "playlists": [{"title": "Original", "url": playlist_url}]
+    }
 
     renamed = client.put(
         "/api/saved-playlists",
         json={"url": playlist_url, "title": "Renamed"},
     )
-    reordered = client.put(
-        "/api/saved-playlists",
-        json={"url": playlist_url, "track_order": ["video_2", "video_1"]},
-    )
 
     assert renamed.status_code == 200
     assert renamed.json["playlist"]["title"] == "Renamed"
-    assert reordered.status_code == 200
-    assert reordered.json["playlist"]["track_order"] == ["video_2", "video_1"]
     assert client.get("/api/saved-playlists").json == {
-        "playlists": [
-            {
-                "title": "Renamed",
-                "url": playlist_url,
-                "track_order": ["video_2", "video_1"],
-            }
-        ]
+        "playlists": [{"title": "Renamed", "url": playlist_url}]
     }
+    assert "track_order" not in app.config["PLAYLIST_LIBRARY_PATH"].read_text(
+        encoding="utf-8"
+    )
 
 
-def test_saved_playlist_update_validates_title_and_track_order(client):
+def test_saved_playlist_update_validates_title_and_rejects_track_order(client):
     playlist_url = "https://www.youtube.com/playlist?list=example"
     client.post(
         "/api/saved-playlists",
@@ -598,9 +641,9 @@ def test_saved_playlist_update_validates_title_and_track_order(client):
         "/api/saved-playlists",
         json={"url": playlist_url, "title": "  "},
     )
-    invalid_order = client.put(
+    unsupported_track_order = client.put(
         "/api/saved-playlists",
-        json={"url": playlist_url, "track_order": ["duplicate", "duplicate"]},
+        json={"url": playlist_url, "track_order": ["video_2", "video_1"]},
     )
     missing_playlist = client.put(
         "/api/saved-playlists",
@@ -611,7 +654,7 @@ def test_saved_playlist_update_validates_title_and_track_order(client):
     )
 
     assert invalid_title.status_code == 400
-    assert invalid_order.status_code == 400
+    assert unsupported_track_order.status_code == 400
     assert missing_playlist.status_code == 404
 
 
