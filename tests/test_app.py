@@ -114,6 +114,15 @@ def test_homepage_renders_player(client):
     assert b"remotePlayerController.playOrPause();" in response.data
     assert b"remotePlayerController.stop();" in response.data
     assert b"remotePlayerController.seek();" in response.data
+    assert b"castSession.getMediaSession()" in response.data
+    assert b"mediaSession.idleReason === chrome.cast.media.IdleReason.FINISHED" in response.data
+    assert b"cast.framework.SessionEventType.MEDIA_SESSION" in response.data
+    assert b"mediaSession.addUpdateListener(castMediaUpdateListener);" in response.data
+    assert b"castMediaSession.removeUpdateListener(castMediaUpdateListener);" in response.data
+    assert b"remotePlayer.idleReason" not in response.data
+    assert b"&& castMediaReady" in response.data
+    assert b"&& !castCompletionHandled" in response.data
+    assert b"castCompletionHandled = true;" in response.data
     assert b'id="saved-playlists"' in response.data
     assert b'id="save-button"' in response.data
     assert b'id="randomize-button"' in response.data

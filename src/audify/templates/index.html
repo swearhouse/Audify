@@ -859,6 +859,10 @@
       let castSession = null;
       let remotePlayer = null;
       let remotePlayerController = null;
+      let castMediaReady = false;
+      let castCompletionHandled = false;
+      let castMediaSession = null;
+      let castMediaUpdateListener = null;
       let resolvedMedia = null;
       let isSeeking = false;
 
@@ -920,11 +924,49 @@
         }
       }
 
+      function onCastMediaStatusChanged(mediaSession) {
+        if (
+          castSession
+          && mediaSession
+          && castMediaReady
+          && !castCompletionHandled
+          && mediaSession.playerState === chrome.cast.media.PlayerState.IDLE
+          && mediaSession.idleReason === chrome.cast.media.IdleReason.FINISHED
+        ) {
+          castCompletionHandled = true;
+          castMediaReady = false;
+          if (currentIndex < tracks.length - 1) {
+            advanceTrack(currentIndex + 1);
+          } else if (currentIndex >= 0) {
+            status.textContent = "Playlist finished.";
+          }
+        }
+      }
+
+      function watchCastMediaSession(event) {
+        const mediaSession = event && event.mediaSession
+          ? event.mediaSession
+          : castSession
+            ? castSession.getMediaSession()
+            : null;
+        if (!mediaSession || mediaSession === castMediaSession) {
+          return;
+        }
+        if (castMediaSession && castMediaUpdateListener) {
+          castMediaSession.removeUpdateListener(castMediaUpdateListener);
+        }
+        castMediaSession = mediaSession;
+        castMediaUpdateListener = () => onCastMediaStatusChanged(mediaSession);
+        mediaSession.addUpdateListener(castMediaUpdateListener);
+        onCastMediaStatusChanged(mediaSession);
+      }
+
       function onRemotePlayerChanged() {
         updatePlaybackControls();
         if (remotePlayer && remotePlayer.title) {
           status.textContent = remotePlayer.title;
         }
+        onCastMediaStatusChanged(castSession ? castSession.getMediaSession() : null);
       }
 
       function updateVolumeControl(volume) {
@@ -982,10 +1024,14 @@
 
         const loadRequest = new chrome.cast.media.LoadRequest(mediaInfo);
         loadRequest.autoplay = true;
+        castMediaReady = false;
         status.textContent = `Sending ${media.title} to Chromecast…`;
         castSession.loadMedia(loadRequest).then(
           () => {
             if (resolvedMedia === media && castSession) {
+              watchCastMediaSession();
+              castMediaReady = true;
+              castCompletionHandled = false;
               status.textContent = media.title;
             }
           },
@@ -1047,6 +1093,11 @@
                 cast.framework.SessionEventType.VOLUME_CHANGED,
                 onCastVolumeChanged,
               );
+              castSession.addEventListener(
+                cast.framework.SessionEventType.MEDIA_SESSION,
+                watchCastMediaSession,
+              );
+              watchCastMediaSession();
               updateCastUi();
               syncCastVolume();
               updatePlaybackControls();
@@ -1076,6 +1127,11 @@
             cast.framework.SessionEventType.VOLUME_CHANGED,
             onCastVolumeChanged,
           );
+          castSession.addEventListener(
+            cast.framework.SessionEventType.MEDIA_SESSION,
+            watchCastMediaSession,
+          );
+          watchCastMediaSession();
           syncCastVolume();
         }
         updateCastUi();
