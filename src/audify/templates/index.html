@@ -828,6 +828,14 @@
                 <span class="material-symbols-outlined" aria-hidden="true">skip_next</span>
               </button>
               <button
+                id="shuffle-button"
+                class="icon-button"
+                type="button"
+                disabled
+                aria-label="Shuffle"
+                title="Shuffle"
+              ><span class="material-symbols-outlined" aria-hidden="true">shuffle</span></button>
+              <button
                 id="cast-button"
                 class="icon-button"
                 type="button"
@@ -957,6 +965,7 @@
       const sidebarContent = document.querySelector("#sidebar-content");
       const previousButton = document.querySelector("#previous-button");
       const nextButton = document.querySelector("#next-button");
+      const shuffleButton = document.querySelector("#shuffle-button");
       const trackList = document.querySelector("#tracks");
       const playlistSearch = document.querySelector("#playlist-search");
       const trackSearchStatus = document.querySelector("#track-search-status");
@@ -1449,7 +1458,20 @@
           : "";
         previousButton.disabled = currentIndex <= 0;
         nextButton.disabled = currentIndex < 0 || currentIndex >= tracks.length - 1;
+        shuffleButton.disabled = tracks.length < 2;
         playlistSearch.disabled = tracks.length === 0;
+      }
+
+      function shuffleTracks() {
+        const currentTrack = currentIndex >= 0 ? tracks[currentIndex] : null;
+        for (let index = tracks.length - 1; index > 0; index -= 1) {
+          const randomIndex = Math.floor(Math.random() * (index + 1));
+          [tracks[index], tracks[randomIndex]] = [tracks[randomIndex], tracks[index]];
+        }
+        if (currentTrack) {
+          currentIndex = tracks.indexOf(currentTrack);
+        }
+        renderTracks();
       }
 
       function clearPlayer() {
@@ -1803,6 +1825,7 @@
 
       previousButton.addEventListener("click", () => selectTrack(currentIndex - 1));
       nextButton.addEventListener("click", () => selectTrack(currentIndex + 1));
+      shuffleButton.addEventListener("click", shuffleTracks);
       playlistSearch.addEventListener("input", renderTracks);
       player.addEventListener("ended", () => {
         if (currentIndex < tracks.length - 1) {

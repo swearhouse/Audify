@@ -89,6 +89,12 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'id="tracks"' in response.data
     assert b'id="play-pause-button"' in response.data
     assert b'id="cast-button"' in response.data
+    assert b'id="shuffle-button"' in response.data
+    assert b'aria-label="Shuffle"' in response.data
+    assert b'title="Shuffle"' in response.data
+    assert b'aria-hidden="true">shuffle</span></button>' in response.data
+    assert b"function shuffleTracks()" in response.data
+    assert b"shuffleButton.addEventListener(\"click\", shuffleTracks);" in response.data
     assert b"function selectTrack(index)" in response.data
     assert b"function advanceTrack(index)" in response.data
     assert b"const maxAudioLoadRetries = 2;" in response.data
