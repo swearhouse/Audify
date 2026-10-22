@@ -534,9 +534,18 @@ def create_app() -> Flask:
     def add_song_to_playlists():
         payload = request.get_json(silent=True)
         playlist_ids = payload.get("playlist_ids") if isinstance(payload, dict) else None
+        submitted_video = payload.get("video") if isinstance(payload, dict) else None
+        video = (
+            {
+                "name": submitted_video.get("name"),
+                "link": submitted_video.get("link"),
+            }
+            if isinstance(submitted_video, dict)
+            else None
+        )
         videos = (
-            validate_videos([payload.get("video")])
-            if isinstance(payload, dict)
+            validate_videos([video])
+            if video is not None
             else None
         )
         if (
@@ -550,9 +559,15 @@ def create_app() -> Flask:
                 for playlist_id in playlist_ids
             )
             or len(playlist_ids) != len(set(playlist_ids))
-            or videos is None
         ):
-            return jsonify(error="Select playlists and provide a valid video."), 400
+            return jsonify(error="Select one or more valid playlists."), 400
+        if videos is None:
+            return jsonify(
+                error=(
+                    "The song details are invalid. Search again or provide a valid "
+                    "YouTube video link."
+                )
+            ), 400
 
         try:
             with PLAYLISTS_LOCK:

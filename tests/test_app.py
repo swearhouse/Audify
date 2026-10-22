@@ -147,6 +147,7 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b"async function persistPlaylist(closeEditor)" in response.data
     assert b"async function addSongToSelectedPlaylists(event)" in response.data
     assert b"Select at least one playlist." in response.data
+    assert b'addSongButton.addEventListener("click", () => openAddSongDialog());' in response.data
     assert b'fetch("/api/playlists/import"' in response.data
     assert b'fetch("/api/playlists")' in response.data
     assert b"video.name" in response.data
@@ -441,6 +442,34 @@ def test_song_can_be_added_to_multiple_playlists(client, app):
     assert stored[1]["videos"] == [new_song]
 
 
+def test_song_add_ignores_search_result_metadata(client):
+    playlist = client.post(
+        "/api/playlists",
+        json={"name": "Search mix", "videos": []},
+    ).json["playlist"]
+
+    response = client.post(
+        "/api/playlists/add-song",
+        json={
+            "playlist_ids": [playlist["id"]],
+            "video": {
+                "name": "Search result",
+                "link": "https://www.youtube.com/watch?v=search-result",
+                "duration": 180,
+                "thumbnail": "https://i.ytimg.com/vi/search-result/default.jpg",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json["playlists"][0]["videos"] == [
+        {
+            "name": "Search result",
+            "link": "https://www.youtube.com/watch?v=search-result",
+        }
+    ]
+
+
 def test_song_add_rejects_duplicate_video_across_selected_playlists_atomically(
     client,
     app,
@@ -506,6 +535,33 @@ def test_add_song_to_playlists_rejects_invalid_or_unowned_playlist_ids(app, clie
         },
     ).status_code == 404
     assert client.get("/api/playlists").json["playlists"] == [created]
+
+
+def test_add_song_to_playlists_returns_specific_validation_errors(client):
+    no_playlists = client.post(
+        "/api/playlists/add-song",
+        json={
+            "playlist_ids": [],
+            "video": {"name": "Song", "link": "https://youtu.be/song"},
+        },
+    )
+    assert no_playlists.status_code == 400
+    assert no_playlists.json == {"error": "Select one or more valid playlists."}
+
+    invalid_song = client.post(
+        "/api/playlists/add-song",
+        json={
+            "playlist_ids": ["valid-playlist-id"],
+            "video": {"name": "Song", "link": "https://example.com/song"},
+        },
+    )
+    assert invalid_song.status_code == 400
+    assert invalid_song.json == {
+        "error": (
+            "The song details are invalid. Search again or provide a valid "
+            "YouTube video link."
+        )
+    }
 
 
 def test_youtube_search_returns_up_to_thirty_results(client):

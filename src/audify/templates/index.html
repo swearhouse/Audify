@@ -2212,7 +2212,7 @@
         }
       }
 
-      addSongButton.addEventListener("click", openAddSongDialog);
+      addSongButton.addEventListener("click", () => openAddSongDialog());
       addPlaylistButton.addEventListener("click", () => openPlaylistEditor());
       youtubeSearchButton.addEventListener("click", () => {
         showYoutubeSearch(youtubeSearchSection.hidden);
