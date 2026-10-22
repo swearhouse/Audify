@@ -56,6 +56,30 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b"Your playlists are private to your account." in response.data
     assert b'id="add-playlist-button"' in response.data
     assert b'id="playlist-editor-form"' in response.data
+    assert b'id="delete-playlist-button"' in response.data
+    assert b'id="import-playlist-button"' in response.data
+    editor_dialog = response.data.split(b'<dialog id="playlist-editor"', 1)[1].split(
+        b"</dialog>", 1
+    )[0]
+    assert b'<button id="delete-playlist-button" type="button" hidden>' in editor_dialog
+    assert b'id="import-playlist-button"' in editor_dialog
+    assert b'id="add-video-button"' in editor_dialog
+    assert b"deletePlaylistButton.hidden = !playlist;" in response.data
+    assert b"deleteButton.addEventListener" not in response.data
+    assert b'<button id="import-playlist-button"' not in response.data.split(
+        b'<dialog id="playlist-editor"', 1
+    )[0]
+    assert b"Import YouTube playlist" in response.data
+    assert b'id="video-add-dialog"' in response.data
+    assert b'id="video-add-form"' in response.data
+    assert b'fetch("/api/videos/title"' in response.data
+    assert b'const videoLink = document.createElement("a");' in response.data
+    assert b"videoLink.href = video.link;" in response.data
+    assert b"videoLink.textContent = video.name;" in response.data
+    assert b"row.dataset.videoName = video.name;" in response.data
+    assert b"row.dataset.videoLink = video.link;" in response.data
+    assert b"row.dataset.videoName, link: row.dataset.videoLink" in response.data
+    assert b'fetch("/api/playlists/import"' in response.data
     assert b'fetch("/api/playlists")' in response.data
     assert b"video.name" in response.data
     assert b"video.link" in response.data
@@ -83,6 +107,8 @@ def test_homepage_requires_login(app):
     [
         ("get", "/api/playlists"),
         ("post", "/api/playlists"),
+        ("post", "/api/playlists/import"),
+        ("post", "/api/videos/title"),
         ("put", "/api/playlists/example"),
         ("delete", "/api/playlists/example"),
         ("post", "/api/resolve"),
@@ -220,7 +246,9 @@ def test_invalid_playlist_library_returns_error(
     assert response.json == {"error": expected_error}
 
 
-def test_old_playlist_format_returns_migration_error(client, app, tmp_path):
+def test_old_playlist_format_does_not_block_new_playlist_operations(
+    client, app, tmp_path
+):
     library_path = tmp_path / "user_playlists.json"
     library_path.write_text(
         '{"admin":[{"title":"Old playlist","url":"https://youtube.com/playlist?list=id"}]}',
@@ -229,10 +257,17 @@ def test_old_playlist_format_returns_migration_error(client, app, tmp_path):
     app.config["PLAYLIST_LIBRARY_PATH"] = library_path
 
     response = client.get("/api/playlists")
+    assert response.status_code == 200
+    assert response.json == {"playlists": []}
 
-    assert response.status_code == 500
-    assert "old YouTube playlist format" in response.json["error"]
-    assert "user_playlists.json" in response.json["error"]
+    created = client.post(
+        "/api/playlists",
+        json={"name": "New playlist", "videos": []},
+    )
+    assert created.status_code == 201
+    assert json.loads(library_path.read_text(encoding="utf-8")) == {
+        "admin": [created.json["playlist"]]
+    }
 
 
 def test_users_have_independent_playlists(app, client):
@@ -290,6 +325,62 @@ def test_playlist_can_be_edited_and_deleted(client):
     assert deleted.json == {"playlists": []}
 
 
+def test_video_title_endpoint_returns_youtube_title_and_canonical_link(client):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {
+            "id": "video-id",
+            "title": "  Video title  ",
+        }
+        response = client.post(
+            "/api/videos/title",
+            json={"url": "https://youtu.be/video-id"},
+        )
+
+    assert response.status_code == 200
+    assert response.json == {
+        "video": {
+            "name": "Video title",
+            "link": "https://www.youtube.com/watch?v=video-id",
+        }
+    }
+    youtube_dl.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/video",
+        "https://www.youtube.com/playlist?list=playlist-id",
+        "http://www.youtube.com/watch?v=video-id",
+    ],
+)
+def test_video_title_endpoint_rejects_invalid_links(client, url):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        response = client.post("/api/videos/title", json={"url": url})
+
+    assert response.status_code == 400
+    assert response.json == {"error": "Enter a valid HTTPS YouTube video URL."}
+    youtube_dl.assert_not_called()
+
+
+def test_video_title_endpoint_handles_unavailable_video(client):
+    from yt_dlp.utils import DownloadError
+
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = (
+            DownloadError("video unavailable")
+        )
+        response = client.post(
+            "/api/videos/title",
+            json={"url": "https://www.youtube.com/watch?v=video-id"},
+        )
+
+    assert response.status_code == 422
+    assert response.json == {
+        "error": "Could not get the title for that YouTube video."
+    }
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -316,6 +407,135 @@ def test_playlist_cannot_be_updated_or_deleted_by_another_user(app, client):
         json={"name": "Changed", "videos": []},
     ).status_code == 404
     assert guest_client.delete(f"/api/playlists/{playlist_id}").status_code == 404
+
+
+def test_import_playlist_saves_youtube_videos_for_current_user(client, app, tmp_path):
+    app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "user_playlists.json"
+    playlist_info = {
+        "title": "Imported mix",
+        "entries": [
+            {"id": "first", "title": "First song"},
+            None,
+            {"id": "second", "title": "Second song"},
+            {"title": "Unavailable video"},
+        ],
+    }
+
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = playlist_info
+        response = client.post(
+            "/api/playlists/import",
+            json={"url": "https://www.youtube.com/playlist?list=example"},
+        )
+
+    assert response.status_code == 201
+    assert response.json["playlist"]["name"] == "Imported mix"
+    assert response.json["playlist"]["videos"] == [
+        {
+            "name": "First song",
+            "link": "https://www.youtube.com/watch?v=first",
+        },
+        {
+            "name": "Second song",
+            "link": "https://www.youtube.com/watch?v=second",
+        },
+    ]
+    assert json.loads(
+        app.config["PLAYLIST_LIBRARY_PATH"].read_text(encoding="utf-8")
+    ) == {"admin": [response.json["playlist"]]}
+    options = youtube_dl.call_args.args[0]
+    assert options["extract_flat"] == "in_playlist"
+    assert options["ignoreerrors"] is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/playlist?list=example",
+        "http://www.youtube.com/playlist?list=example",
+        "https://www.youtube.com/playlist",
+        "https://youtu.be/video",
+        "https://www.youtube.com/channel/example?list=example",
+    ],
+)
+def test_import_playlist_rejects_invalid_playlist_urls(client, url):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        response = client.post("/api/playlists/import", json={"url": url})
+
+    assert response.status_code == 400
+    assert response.json == {"error": "Enter a valid HTTPS YouTube playlist URL."}
+    youtube_dl.assert_not_called()
+
+
+def test_import_playlist_returns_error_when_youtube_extraction_fails(client):
+    from yt_dlp.utils import DownloadError
+
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = (
+            DownloadError("playlist unavailable")
+        )
+        response = client.post(
+            "/api/playlists/import",
+            json={"url": "https://www.youtube.com/playlist?list=example"},
+        )
+
+    assert response.status_code == 422
+    assert response.json == {"error": "Could not import that YouTube playlist."}
+
+
+def test_import_playlist_returns_error_when_no_videos_are_available(client):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {
+            "title": "Empty playlist",
+            "entries": [None, {"title": "Unavailable"}],
+        }
+        response = client.post(
+            "/api/playlists/import",
+            json={"url": "https://www.youtube.com/playlist?list=example"},
+        )
+
+    assert response.status_code == 422
+    assert response.json == {
+        "error": "No videos were found in that YouTube playlist."
+    }
+
+
+def test_import_playlist_rejects_oversized_playlist_without_truncating(client):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {
+            "title": "Very large playlist",
+            "entries": [
+                {"id": str(index), "title": f"Song {index}"}
+                for index in range(5001)
+            ],
+        }
+        response = client.post(
+            "/api/playlists/import",
+            json={"url": "https://www.youtube.com/playlist?list=example"},
+        )
+
+    assert response.status_code == 422
+    assert response.json == {
+        "error": "That YouTube playlist has more than 5,000 videos and cannot be imported."
+    }
+
+
+def test_imported_playlists_are_private_to_the_user(app, client, tmp_path):
+    app.config["PLAYLIST_LIBRARY_PATH"] = tmp_path / "user_playlists.json"
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {
+            "title": "Admin import",
+            "entries": [{"id": "video", "title": "Song"}],
+        }
+        response = client.post(
+            "/api/playlists/import",
+            json={"url": "https://www.youtube.com/playlist?list=admin"},
+        )
+    assert response.status_code == 201
+
+    guest = app.test_client()
+    guest.post("/api/login", json={"username": "quest", "password": "guest"})
+    assert guest.get("/api/playlists").json == {"playlists": []}
 
 
 def test_resolve_rejects_invalid_url(client):

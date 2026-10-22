@@ -5,7 +5,7 @@ import tempfile
 import uuid
 from pathlib import Path
 from threading import Lock
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from yt_dlp import YoutubeDL
@@ -126,6 +126,23 @@ def is_youtube_video_url(value: str) -> bool:
     )
 
 
+def get_youtube_playlist_url(value: str) -> str | None:
+    if not is_youtube_url(value):
+        return None
+    try:
+        parsed = urlsplit(value.strip())
+        playlist_ids = parse_qs(parsed.query, keep_blank_values=True).get("list", [])
+    except ValueError:
+        return None
+    if (
+        parsed.path not in {"/playlist", "/watch"}
+        or len(playlist_ids) != 1
+        or not playlist_ids[0].strip()
+    ):
+        return None
+    return f"https://www.youtube.com/playlist?{urlencode({'list': playlist_ids[0].strip()})}"
+
+
 def validate_videos(value: object) -> list[dict[str, str]] | None:
     if not isinstance(value, list) or len(value) > 5000:
         return None
@@ -159,17 +176,15 @@ def read_playlists(path: Path) -> dict[str, list[dict]]:
     for username, user_playlists in playlists.items():
         if not isinstance(username, str) or not isinstance(user_playlists, list):
             raise PlaylistStorageError("The playlist library has an invalid format.")
-        if any(
-            isinstance(playlist, dict) and set(playlist) == {"title", "url"}
-            for playlist in user_playlists
-        ):
-            raise PlaylistStorageError(
-                "Existing playlists use the old YouTube playlist format. "
-                "Convert or remove them from user_playlists.json before using "
-                "the playlist editor."
-            )
         ids = []
         for playlist in user_playlists:
+            if (
+                isinstance(playlist, dict)
+                and set(playlist) == {"title", "url"}
+                and isinstance(playlist.get("title"), str)
+                and isinstance(playlist.get("url"), str)
+            ):
+                continue
             if (
                 not isinstance(playlist, dict)
                 or set(playlist) != {"id", "name", "videos"}
@@ -295,7 +310,11 @@ def create_app() -> Flask:
         try:
             with PLAYLISTS_LOCK:
                 libraries = read_playlists(Path(app.config["PLAYLIST_LIBRARY_PATH"]))
-                playlists = libraries.get(session["username"], [])
+                user_playlists = libraries.get(session["username"], [])
+                playlists = [
+                    playlist for playlist in user_playlists if "id" in playlist
+                ]
+                legacy_count = len(user_playlists) - len(playlists)
         except PlaylistStorageError as error:
             app.logger.exception("Could not load the user's playlists")
             return jsonify(error=str(error)), 500
@@ -319,11 +338,85 @@ def create_app() -> Flask:
             with PLAYLISTS_LOCK:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
                 libraries = read_playlists(path)
-                libraries.setdefault(session["username"], []).append(playlist)
+                user_playlists = libraries.setdefault(session["username"], [])
+                user_playlists[:] = [item for item in user_playlists if "id" in item]
+                user_playlists.append(playlist)
                 write_playlists(path, libraries)
         except PlaylistStorageError:
             app.logger.exception("Could not create playlist")
             return jsonify(error="Could not save the playlist."), 500
+        return jsonify(playlist=playlist), 201
+
+    @app.post("/api/playlists/import")
+    def import_playlist():
+        payload = request.get_json(silent=True)
+        url = payload.get("url") if isinstance(payload, dict) else None
+        playlist_url = get_youtube_playlist_url(url) if isinstance(url, str) else None
+        if playlist_url is None:
+            return jsonify(error="Enter a valid HTTPS YouTube playlist URL."), 400
+
+        options = {
+            "extract_flat": "in_playlist",
+            "ignoreerrors": True,
+            "noplaylist": False,
+            "quiet": True,
+            "no_warnings": True,
+            "socket_timeout": 15,
+        }
+        try:
+            with YoutubeDL(options) as ydl:
+                info = ydl.extract_info(playlist_url, download=False)
+        except DownloadError:
+            app.logger.exception("yt-dlp could not import the supplied playlist")
+            return jsonify(error="Could not import that YouTube playlist."), 422
+
+        entries = info.get("entries") if isinstance(info, dict) else None
+        if not isinstance(entries, (list, tuple)):
+            return jsonify(error="No videos were found in that YouTube playlist."), 422
+        if len(entries) > 5000:
+            return jsonify(
+                error="That YouTube playlist has more than 5,000 videos and cannot be imported."
+            ), 422
+
+        videos = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            video_id = entry.get("id")
+            title = entry.get("title")
+            if not isinstance(video_id, str) or not video_id.strip():
+                continue
+            if not isinstance(title, str) or not title.strip():
+                title = "Untitled video"
+            video = {
+                "name": title.strip()[:200],
+                "link": f"https://www.youtube.com/watch?{urlencode({'v': video_id.strip()})}",
+            }
+            if validate_videos([video]) is not None:
+                videos.append(video)
+
+        if not videos:
+            return jsonify(error="No videos were found in that YouTube playlist."), 422
+
+        title = info.get("title") if isinstance(info, dict) else None
+        if not isinstance(title, str) or not title.strip():
+            title = "Imported YouTube playlist"
+        playlist = {
+            "id": uuid.uuid4().hex,
+            "name": title.strip()[:200],
+            "videos": videos,
+        }
+        try:
+            with PLAYLISTS_LOCK:
+                path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
+                libraries = read_playlists(path)
+                user_playlists = libraries.setdefault(session["username"], [])
+                user_playlists[:] = [item for item in user_playlists if "id" in item]
+                user_playlists.append(playlist)
+                write_playlists(path, libraries)
+        except PlaylistStorageError:
+            app.logger.exception("Could not save imported playlist")
+            return jsonify(error="Could not save the imported playlist."), 500
         return jsonify(playlist=playlist), 201
 
     @app.put("/api/playlists/<playlist_id>")
@@ -344,7 +437,13 @@ def create_app() -> Flask:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
                 libraries = read_playlists(path)
                 playlists = libraries.get(session["username"], [])
-                playlist = next((item for item in playlists if item["id"] == playlist_id), None)
+                playlist = next(
+                    (
+                        item for item in playlists
+                        if item.get("id") == playlist_id
+                    ),
+                    None,
+                )
                 if playlist is None:
                     return jsonify(error="Playlist was not found."), 404
                 playlist["name"] = name.strip()
@@ -362,7 +461,9 @@ def create_app() -> Flask:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
                 libraries = read_playlists(path)
                 playlists = libraries.get(session["username"], [])
-                remaining = [item for item in playlists if item["id"] != playlist_id]
+                remaining = [
+                    item for item in playlists if item.get("id") != playlist_id
+                ]
                 if len(remaining) == len(playlists):
                     return jsonify(error="Playlist was not found."), 404
                 libraries[session["username"]] = remaining
@@ -371,6 +472,42 @@ def create_app() -> Flask:
             app.logger.exception("Could not delete playlist")
             return jsonify(error="Could not remove the playlist."), 500
         return jsonify(playlists=remaining)
+
+    @app.post("/api/videos/title")
+    def video_title():
+        payload = request.get_json(silent=True)
+        url = payload.get("url") if isinstance(payload, dict) else None
+        if not isinstance(url, str) or not is_youtube_video_url(url):
+            return jsonify(error="Enter a valid HTTPS YouTube video URL."), 400
+
+        options = {
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "socket_timeout": 15,
+        }
+        try:
+            with YoutubeDL(options) as ydl:
+                info = ydl.extract_info(url.strip(), download=False)
+        except DownloadError:
+            app.logger.exception("yt-dlp could not load video details")
+            return jsonify(error="Could not get the title for that YouTube video."), 422
+
+        title = info.get("title") if isinstance(info, dict) else None
+        video_id = info.get("id") if isinstance(info, dict) else None
+        if (
+            not isinstance(title, str)
+            or not title.strip()
+            or not isinstance(video_id, str)
+            or not video_id.strip()
+        ):
+            return jsonify(error="Could not get the title for that YouTube video."), 422
+
+        video = {
+            "name": title.strip()[:200],
+            "link": f"https://www.youtube.com/watch?{urlencode({'v': video_id.strip()})}",
+        }
+        return jsonify(video=video)
 
     @app.post("/api/resolve")
     def resolve():

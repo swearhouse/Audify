@@ -112,14 +112,86 @@
         color: #edf1f7;
       }
 
+      #playlist-import-dialog {
+        width: min(480px, calc(100% - 32px));
+        padding: 24px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--surface-raised);
+        color: #edf1f7;
+      }
+
+      #playlist-import-dialog::backdrop {
+        background: #05070bbf;
+        backdrop-filter: blur(3px);
+      }
+
+      #playlist-import-dialog h2 {
+        margin: 0 0 16px;
+        font-size: 18px;
+      }
+
+      .playlist-import-form {
+        display: grid;
+        gap: 12px;
+      }
+
+      .playlist-import-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      #video-add-dialog {
+        width: min(480px, calc(100% - 32px));
+        padding: 24px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--surface-raised);
+        color: #edf1f7;
+      }
+
+      #video-add-dialog::backdrop {
+        background: #05070bbf;
+        backdrop-filter: blur(3px);
+      }
+
+      #video-add-dialog h2 {
+        margin: 0 0 16px;
+        font-size: 18px;
+      }
+
+      .video-add-form {
+        display: grid;
+        gap: 12px;
+      }
+
+      .video-add-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
       #playlist-editor::backdrop {
         background: #05070bbf;
         backdrop-filter: blur(3px);
       }
 
       #playlist-editor h2 {
-        margin: 0 0 16px;
+        margin: 0;
         font-size: 18px;
+      }
+
+      .playlist-editor-heading-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .playlist-editor-heading-actions {
+        display: flex;
+        gap: 8px;
       }
 
       .playlist-editor-form,
@@ -141,7 +213,7 @@
 
       .playlist-video-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 6px;
       }
 
@@ -149,10 +221,22 @@
         width: 100%;
       }
 
+      .playlist-video-link {
+        min-width: 0;
+        align-self: center;
+        overflow-wrap: anywhere;
+        color: var(--accent);
+      }
+
       .playlist-editor-actions {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         margin-top: 8px;
+      }
+
+      .playlist-editor-primary-actions {
+        display: flex;
+        gap: 8px;
       }
 
       .icon-button {
@@ -262,6 +346,10 @@
       #add-playlist-button {
         width: 100%;
         margin: 0 0 10px;
+      }
+
+      #import-playlist-button {
+        width: 100%;
       }
 
       audio {
@@ -796,16 +884,62 @@
     </main>
     <dialog id="playlist-editor" aria-labelledby="playlist-editor-heading">
       <form id="playlist-editor-form" class="playlist-editor-form">
-        <h2 id="playlist-editor-heading">Add playlist</h2>
+        <div class="playlist-editor-heading-row">
+          <h2 id="playlist-editor-heading">Add playlist</h2>
+          <div class="playlist-editor-heading-actions">
+            <button id="import-playlist-button" type="button">Import Playlist</button>
+            <button id="add-video-button" type="button">Add video</button>
+          </div>
+        </div>
         <label class="playlist-editor-field" for="playlist-name">
           Playlist name
           <input id="playlist-name" type="text" maxlength="200" required>
         </label>
         <div id="playlist-video-fields" class="playlist-video-fields"></div>
-        <button id="add-video-button" type="button">Add video</button>
+        <p id="playlist-editor-status" role="status" aria-live="polite"></p>
         <div class="playlist-editor-actions">
-          <button id="cancel-playlist-button" type="button">Cancel</button>
-          <button id="save-playlist-button" type="submit">Save playlist</button>
+          <button id="delete-playlist-button" type="button" hidden>Delete playlist</button>
+          <div class="playlist-editor-primary-actions">
+            <button id="cancel-playlist-button" type="button">Cancel</button>
+            <button id="save-playlist-button" type="submit">Save playlist</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="playlist-import-dialog" aria-labelledby="playlist-import-heading">
+      <form id="playlist-import-form" class="playlist-import-form">
+        <h2 id="playlist-import-heading">Import YouTube playlist</h2>
+        <label class="playlist-editor-field" for="playlist-import-url">
+          YouTube playlist link
+          <input
+            id="playlist-import-url"
+            type="url"
+            placeholder="https://www.youtube.com/playlist?list=..."
+            required
+          >
+        </label>
+        <div class="playlist-import-actions">
+          <button id="cancel-playlist-import" type="button">Cancel</button>
+          <button id="submit-playlist-import" type="submit">Import playlist</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="video-add-dialog" aria-labelledby="video-add-heading">
+      <form id="video-add-form" class="video-add-form">
+        <h2 id="video-add-heading">Add YouTube video</h2>
+        <label class="playlist-editor-field" for="video-add-url">
+          YouTube video link
+          <input
+            id="video-add-url"
+            type="url"
+            placeholder="https://www.youtube.com/watch?v=..."
+            required
+          >
+        </label>
+        <p id="video-add-status" role="status" aria-live="polite"></p>
+        <div class="video-add-actions">
+          <button id="cancel-video-add" type="button">Cancel</button>
+          <button id="submit-video-add" type="submit">Add video</button>
         </div>
       </form>
     </dialog>
@@ -836,9 +970,23 @@
       const playlistEditorHeading = document.querySelector("#playlist-editor-heading");
       const playlistNameInput = document.querySelector("#playlist-name");
       const playlistVideoFields = document.querySelector("#playlist-video-fields");
+      const playlistEditorStatus = document.querySelector("#playlist-editor-status");
       const addVideoButton = document.querySelector("#add-video-button");
       const cancelPlaylistButton = document.querySelector("#cancel-playlist-button");
       const savePlaylistButton = document.querySelector("#save-playlist-button");
+      const deletePlaylistButton = document.querySelector("#delete-playlist-button");
+      const importPlaylistButton = document.querySelector("#import-playlist-button");
+      const playlistImportDialog = document.querySelector("#playlist-import-dialog");
+      const playlistImportForm = document.querySelector("#playlist-import-form");
+      const playlistImportUrl = document.querySelector("#playlist-import-url");
+      const submitPlaylistImport = document.querySelector("#submit-playlist-import");
+      const cancelPlaylistImport = document.querySelector("#cancel-playlist-import");
+      const videoAddDialog = document.querySelector("#video-add-dialog");
+      const videoAddForm = document.querySelector("#video-add-form");
+      const videoAddUrl = document.querySelector("#video-add-url");
+      const videoAddStatus = document.querySelector("#video-add-status");
+      const submitVideoAdd = document.querySelector("#submit-video-add");
+      const cancelVideoAdd = document.querySelector("#cancel-video-add");
       const player = document.querySelector("#player");
       const castButton = document.querySelector("#cast-button");
       const castIcon = castButton.querySelector(".material-symbols-outlined");
@@ -1483,13 +1631,7 @@
           editButton.setAttribute("aria-label", `Edit ${playlist.name}`);
           editButton.addEventListener("click", () => openPlaylistEditor(playlist));
 
-          const deleteButton = document.createElement("button");
-          deleteButton.type = "button";
-          deleteButton.textContent = "Delete";
-          deleteButton.setAttribute("aria-label", `Delete ${playlist.name}`);
-          deleteButton.addEventListener("click", () => deletePlaylist(playlist));
-
-          item.append(openButton, editButton, deleteButton);
+          item.append(openButton, editButton);
           playlistList.append(item);
         });
       }
@@ -1497,39 +1639,61 @@
       function addVideoEditorRow(video = { name: "", link: "" }) {
         const row = document.createElement("div");
         row.classList.add("playlist-video-row");
-        const nameInput = document.createElement("input");
-        nameInput.type = "text";
-        nameInput.maxLength = 200;
-        nameInput.required = true;
-        nameInput.placeholder = "Video name";
-        nameInput.setAttribute("aria-label", "Video name");
-        nameInput.value = video.name;
-
-        const linkInput = document.createElement("input");
-        linkInput.type = "url";
-        linkInput.required = true;
-        linkInput.placeholder = "YouTube video link";
-        linkInput.setAttribute("aria-label", "YouTube video link");
-        linkInput.value = video.link;
+        row.dataset.videoName = video.name;
+        row.dataset.videoLink = video.link;
+        const videoLink = document.createElement("a");
+        videoLink.classList.add("playlist-video-link");
+        videoLink.href = video.link;
+        videoLink.target = "_blank";
+        videoLink.rel = "noopener noreferrer";
+        videoLink.textContent = video.name;
 
         const removeButton = document.createElement("button");
         removeButton.type = "button";
         removeButton.textContent = "Remove";
         removeButton.setAttribute("aria-label", "Remove video");
         removeButton.addEventListener("click", () => row.remove());
-        row.append(nameInput, linkInput, removeButton);
+        row.append(videoLink, removeButton);
         playlistVideoFields.append(row);
       }
 
       function openPlaylistEditor(playlist = null) {
         editingPlaylistId = playlist ? playlist.id : null;
         playlistEditorHeading.textContent = playlist ? "Edit playlist" : "Add playlist";
+        deletePlaylistButton.hidden = !playlist;
         playlistNameInput.value = playlist ? playlist.name : "";
+        playlistEditorStatus.textContent = "";
         playlistVideoFields.replaceChildren();
-        (playlist ? playlist.videos : [{ name: "", link: "" }])
+        (playlist ? playlist.videos : [])
           .forEach(addVideoEditorRow);
         playlistEditor.showModal();
         playlistNameInput.focus();
+      }
+
+      async function addVideoFromLink(event) {
+        event.preventDefault();
+        submitVideoAdd.disabled = true;
+        videoAddStatus.textContent = "Looking up video…";
+        try {
+          const response = await fetch("/api/videos/title", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: videoAddUrl.value.trim() }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not get the video title.");
+          }
+          addVideoEditorRow(result.video);
+          videoAddDialog.close();
+          videoAddForm.reset();
+          playlistEditorStatus.textContent =
+            `Added "${result.video.name}". Save the playlist to keep your changes.`;
+        } catch (error) {
+          videoAddStatus.textContent = error.message;
+        } finally {
+          submitVideoAdd.disabled = false;
+        }
       }
 
       async function savePlaylist(event) {
@@ -1537,10 +1701,7 @@
         savePlaylistButton.disabled = true;
         const videos = Array.from(
           playlistVideoFields.querySelectorAll(".playlist-video-row"),
-          (row) => ({
-            name: row.querySelector('input[type="text"]').value.trim(),
-            link: row.querySelector('input[type="url"]').value.trim(),
-          }),
+          (row) => ({ name: row.dataset.videoName, link: row.dataset.videoLink }),
         );
         const method = editingPlaylistId ? "PUT" : "POST";
         const endpoint = editingPlaylistId
@@ -1584,15 +1745,61 @@
             throw new Error(result.error || "Could not delete the playlist.");
           }
           await refreshPlaylists();
+          playlistEditor.close();
+          playlistStatus.textContent = "Playlist deleted.";
+        } catch (error) {
+          playlistEditorStatus.textContent = error.message;
+        }
+      }
+
+      async function importPlaylist(event) {
+        event.preventDefault();
+        submitPlaylistImport.disabled = true;
+        playlistStatus.textContent = "Importing playlist…";
+        try {
+          const response = await fetch("/api/playlists/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: playlistImportUrl.value.trim() }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not import the playlist.");
+          }
+          playlistImportDialog.close();
+          playlistImportForm.reset();
+          await refreshPlaylists();
+          playlistStatus.textContent =
+            `Imported "${result.playlist.name}" (${result.playlist.videos.length} videos).`;
         } catch (error) {
           playlistStatus.textContent = error.message;
+        } finally {
+          submitPlaylistImport.disabled = false;
         }
       }
 
       addPlaylistButton.addEventListener("click", () => openPlaylistEditor());
-      addVideoButton.addEventListener("click", () => addVideoEditorRow());
+      addVideoButton.addEventListener("click", () => {
+        videoAddForm.reset();
+        videoAddStatus.textContent = "";
+        videoAddDialog.showModal();
+        videoAddUrl.focus();
+      });
+      cancelVideoAdd.addEventListener("click", () => videoAddDialog.close());
+      videoAddForm.addEventListener("submit", addVideoFromLink);
       cancelPlaylistButton.addEventListener("click", () => playlistEditor.close());
       playlistEditorForm.addEventListener("submit", savePlaylist);
+      deletePlaylistButton.addEventListener("click", () => {
+        if (editingPlaylistId) {
+          deletePlaylist({ id: editingPlaylistId, name: playlistNameInput.value.trim() });
+        }
+      });
+      importPlaylistButton.addEventListener("click", () => {
+        playlistImportDialog.showModal();
+        playlistImportUrl.focus();
+      });
+      cancelPlaylistImport.addEventListener("click", () => playlistImportDialog.close());
+      playlistImportForm.addEventListener("submit", importPlaylist);
 
       previousButton.addEventListener("click", () => selectTrack(currentIndex - 1));
       nextButton.addEventListener("click", () => selectTrack(currentIndex + 1));
