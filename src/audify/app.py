@@ -2,17 +2,16 @@ import json
 import logging
 import os
 import tempfile
+import uuid
 from pathlib import Path
 from threading import Lock
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
 
-YOUTUBE_VIDEO_URL = "https://www.youtube.com/watch?"
-YOUTUBE_THUMBNAIL_HOSTS = {"i.ytimg.com", "img.youtube.com"}
 YOUTUBE_HOSTS = {
     "youtu.be",
     "www.youtube.com",
@@ -30,7 +29,7 @@ AUDIO_MIME_TYPES = {
     "wav": "audio/wav",
     "webm": "audio/webm",
 }
-LIBRARY_LOCK = Lock()
+PLAYLISTS_LOCK = Lock()
 USER_LOCK = Lock()
 DEFAULT_USERS = {
     "users": [
@@ -40,11 +39,11 @@ DEFAULT_USERS = {
 }
 
 
-class LibraryStorageError(Exception):
+class UserStorageError(Exception):
     pass
 
 
-class UserStorageError(Exception):
+class PlaylistStorageError(Exception):
     pass
 
 
@@ -105,100 +104,92 @@ def is_youtube_url(value: str) -> bool:
         return False
 
 
-def get_youtube_playlist_url(value: str) -> str | None:
-    if not is_youtube_url(value):
-        return None
+def is_youtube_video_url(value: str) -> bool:
     try:
-        playlist_ids = parse_qs(
-            urlsplit(value.strip()).query,
-            keep_blank_values=True,
-        ).get("list", [])
+        parsed = urlsplit(value.strip())
     except ValueError:
-        return None
-    if len(playlist_ids) != 1 or not playlist_ids[0].strip():
-        return None
-    return f"https://www.youtube.com/playlist?{urlencode({'list': playlist_ids[0].strip()})}"
+        return False
+    if not is_youtube_url(value):
+        return False
 
-
-def is_valid_playlist_order(value: object) -> bool:
+    if parsed.hostname == "youtu.be":
+        path_parts = parsed.path.strip("/").split("/")
+        return len(path_parts) == 1 and bool(path_parts[0])
+    if parsed.path == "/watch":
+        video_ids = parse_qs(parsed.query, keep_blank_values=True).get("v", [])
+        return len(video_ids) == 1 and bool(video_ids[0].strip())
+    path_parts = parsed.path.strip("/").split("/")
     return (
-        isinstance(value, list)
-        and len(value) <= 5000
-        and all(
-            isinstance(url, str)
-            and get_youtube_playlist_url(url) == url
-            for url in value
-        )
-        and len(value) == len(set(value))
+        len(path_parts) == 2
+        and path_parts[0] in {"embed", "live", "shorts"}
+        and bool(path_parts[1])
     )
 
 
-def get_thumbnail_url(entry: dict) -> str | None:
-    thumbnails = entry.get("thumbnails")
-    candidates = thumbnails if isinstance(thumbnails, list) else []
-    if isinstance(entry.get("thumbnail"), str):
-        candidates = [*candidates, {"url": entry["thumbnail"]}]
-
-    valid_candidates = []
-    for thumbnail in candidates:
-        if not isinstance(thumbnail, dict) or not isinstance(thumbnail.get("url"), str):
-            continue
-        url = thumbnail["url"]
-        try:
-            parsed = urlsplit(url)
-        except ValueError:
-            continue
+def validate_videos(value: object) -> list[dict[str, str]] | None:
+    if not isinstance(value, list) or len(value) > 5000:
+        return None
+    videos = []
+    for video in value:
         if (
-            parsed.scheme != "https"
-            or parsed.hostname not in YOUTUBE_THUMBNAIL_HOSTS
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.port is not None
+            not isinstance(video, dict)
+            or set(video) != {"link", "name"}
+            or not isinstance(video.get("link"), str)
+            or not is_youtube_video_url(video["link"])
+            or not isinstance(video.get("name"), str)
+            or not video["name"].strip()
+            or len(video["name"].strip()) > 200
         ):
-            continue
-        width = thumbnail.get("width")
-        height = thumbnail.get("height")
-        area = width * height if isinstance(width, int) and isinstance(height, int) else 0
-        valid_candidates.append((area, url))
-
-    return max(valid_candidates, default=(0, None), key=lambda candidate: candidate[0])[1]
+            return None
+        videos.append({"name": video["name"].strip(), "link": video["link"].strip()})
+    return videos
 
 
-def read_library(path: Path) -> dict[str, list[dict[str, str]]]:
+def read_playlists(path: Path) -> dict[str, list[dict]]:
     try:
         if not path.exists():
             return {}
-        with path.open(encoding="utf-8") as library_file:
-            library = json.load(library_file)
+        with path.open(encoding="utf-8") as playlists_file:
+            playlists = json.load(playlists_file)
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise LibraryStorageError("Could not read the saved playlist library.") from error
+        raise PlaylistStorageError("Could not read the playlist library.") from error
 
-    if not isinstance(library, dict) or any(
-        not isinstance(username, str)
-        or not isinstance(playlists, list)
-        or any(
-            not isinstance(item, dict)
-            or set(item) != {"title", "url"}
-            or not isinstance(item.get("title"), str)
-            or not isinstance(item.get("url"), str)
-            or get_youtube_playlist_url(item["url"]) != item["url"]
-            for item in playlists
-        )
-        for username, playlists in library.items()
-    ):
-        raise LibraryStorageError("The saved playlist library has an invalid format.")
-    return library
+    if not isinstance(playlists, dict):
+        raise PlaylistStorageError("The playlist library has an invalid format.")
+    for username, user_playlists in playlists.items():
+        if not isinstance(username, str) or not isinstance(user_playlists, list):
+            raise PlaylistStorageError("The playlist library has an invalid format.")
+        if any(
+            isinstance(playlist, dict) and set(playlist) == {"title", "url"}
+            for playlist in user_playlists
+        ):
+            raise PlaylistStorageError(
+                "Existing playlists use the old YouTube playlist format. "
+                "Convert or remove them from user_playlists.json before using "
+                "the playlist editor."
+            )
+        ids = []
+        for playlist in user_playlists:
+            if (
+                not isinstance(playlist, dict)
+                or set(playlist) != {"id", "name", "videos"}
+                or not isinstance(playlist.get("id"), str)
+                or not playlist["id"].strip()
+                or len(playlist["id"]) > 200
+                or not isinstance(playlist.get("name"), str)
+                or not playlist["name"].strip()
+                or len(playlist["name"]) > 200
+                or validate_videos(playlist.get("videos")) is None
+            ):
+                raise PlaylistStorageError("The playlist library has an invalid format.")
+            ids.append(playlist["id"])
+        if len(ids) != len(set(ids)):
+            raise PlaylistStorageError("The playlist library contains duplicate ids.")
+    return playlists
 
 
-def write_library(path: Path, library: dict[str, list[dict[str, str]]]) -> None:
+def write_playlists(path: Path, playlists: dict[str, list[dict]]) -> None:
     temporary_path = None
-    playlist_library = {
-        username: [
-            {"title": playlist["title"], "url": playlist["url"]}
-            for playlist in playlists
-        ]
-        for username, playlists in library.items()
-    }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
@@ -206,10 +197,10 @@ def write_library(path: Path, library: dict[str, list[dict[str, str]]]) -> None:
             encoding="utf-8",
             dir=path.parent,
             delete=False,
-        ) as library_file:
-            temporary_path = Path(library_file.name)
-            json.dump(playlist_library, library_file, ensure_ascii=False, indent=2)
-            library_file.write("\n")
+        ) as playlists_file:
+            temporary_path = Path(playlists_file.name)
+            json.dump(playlists, playlists_file, ensure_ascii=False, indent=2)
+            playlists_file.write("\n")
         os.replace(temporary_path, path)
     except OSError as error:
         if temporary_path is not None:
@@ -217,9 +208,9 @@ def write_library(path: Path, library: dict[str, list[dict[str, str]]]) -> None:
                 temporary_path.unlink(missing_ok=True)
             except OSError:
                 logging.getLogger(__name__).exception(
-                    "Could not clean up temporary playlist library file"
+                    "Could not clean up temporary playlist file"
                 )
-        raise LibraryStorageError("Could not save the playlist library.") from error
+        raise PlaylistStorageError("Could not save the playlist library.") from error
 
 
 def create_app() -> Flask:
@@ -299,186 +290,93 @@ def create_app() -> Flask:
     def index():
         return render_template("index.html", username=session["username"])
 
-    @app.get("/api/saved-playlists")
-    def saved_playlists():
+    @app.get("/api/playlists")
+    def playlists_api():
         try:
-            with LIBRARY_LOCK:
-                libraries = read_library(Path(app.config["PLAYLIST_LIBRARY_PATH"]))
+            with PLAYLISTS_LOCK:
+                libraries = read_playlists(Path(app.config["PLAYLIST_LIBRARY_PATH"]))
                 playlists = libraries.get(session["username"], [])
-        except LibraryStorageError:
-            app.logger.exception("Could not load saved playlists")
-            return jsonify(error="Could not load saved playlists."), 500
+        except PlaylistStorageError as error:
+            app.logger.exception("Could not load the user's playlists")
+            return jsonify(error=str(error)), 500
         return jsonify(playlists=playlists)
 
-    @app.post("/api/saved-playlists")
-    def save_playlist():
+    @app.post("/api/playlists")
+    def create_playlist():
         payload = request.get_json(silent=True)
-        if not isinstance(payload, dict):
-            return jsonify(error="Provide a playlist title and YouTube URL."), 400
-        title = payload.get("title")
-        url = payload.get("url")
-        playlist_url = get_youtube_playlist_url(url) if isinstance(url, str) else None
+        name = payload.get("name") if isinstance(payload, dict) else None
+        videos = validate_videos(payload.get("videos")) if isinstance(payload, dict) else None
         if (
-            not isinstance(title, str)
-            or not title.strip()
-            or len(title.strip()) > 200
-            or playlist_url is None
+            not isinstance(name, str)
+            or not name.strip()
+            or len(name.strip()) > 200
+            or videos is None
         ):
-            return jsonify(error="Provide a playlist title and a YouTube playlist URL."), 400
+            return jsonify(error="Provide a playlist name and valid video list."), 400
 
-        playlist = {"title": title.strip(), "url": playlist_url}
+        playlist = {"id": uuid.uuid4().hex, "name": name.strip(), "videos": videos}
         try:
-            with LIBRARY_LOCK:
+            with PLAYLISTS_LOCK:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
-                libraries = read_library(path)
-                playlists = libraries.get(session["username"], [])
-                existing = next(
-                    (item for item in playlists if item["url"] == playlist["url"]),
-                    None,
-                )
-                if existing:
-                    existing["title"] = playlist["title"]
-                else:
-                    playlists.append(playlist)
-                libraries[session["username"]] = playlists
-                write_library(path, libraries)
-        except LibraryStorageError:
-            app.logger.exception("Could not save playlist")
+                libraries = read_playlists(path)
+                libraries.setdefault(session["username"], []).append(playlist)
+                write_playlists(path, libraries)
+        except PlaylistStorageError:
+            app.logger.exception("Could not create playlist")
             return jsonify(error="Could not save the playlist."), 500
-        return jsonify(playlist=playlist, updated=existing is not None), 200
+        return jsonify(playlist=playlist), 201
 
-    @app.put("/api/saved-playlists")
-    def update_saved_playlist():
+    @app.put("/api/playlists/<playlist_id>")
+    def update_playlist(playlist_id):
         payload = request.get_json(silent=True)
-        url = payload.get("url") if isinstance(payload, dict) else None
-        title = payload.get("title") if isinstance(payload, dict) else None
-        playlist_order = payload.get("playlist_order") if isinstance(payload, dict) else None
-        playlist_url = get_youtube_playlist_url(url) if isinstance(url, str) else None
-        if playlist_url is None:
-            return jsonify(error="Provide a valid YouTube playlist URL."), 400
+        name = payload.get("name") if isinstance(payload, dict) else None
+        videos = validate_videos(payload.get("videos")) if isinstance(payload, dict) else None
         if (
-            not isinstance(payload, dict)
-            or not any(
-                key in payload
-                for key in ("title", "playlist_order")
-            )
-            or (
-                "title" in payload
-                and (
-                    not isinstance(title, str)
-                    or not title.strip()
-                    or len(title.strip()) > 200
-                )
-            )
-            or (
-                "playlist_order" in payload
-                and not is_valid_playlist_order(playlist_order)
-            )
+            not isinstance(name, str)
+            or not name.strip()
+            or len(name.strip()) > 200
+            or videos is None
         ):
-            return jsonify(error="Provide a valid playlist title or playlist order."), 400
+            return jsonify(error="Provide a playlist name and valid video list."), 400
 
         try:
-            with LIBRARY_LOCK:
+            with PLAYLISTS_LOCK:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
-                libraries = read_library(path)
+                libraries = read_playlists(path)
                 playlists = libraries.get(session["username"], [])
-                existing = next(
-                    (item for item in playlists if item["url"] == playlist_url),
-                    None,
-                )
-                if existing is None:
-                    return jsonify(error="Saved playlist was not found."), 404
-                if "playlist_order" in payload:
-                    playlist_urls = {item["url"] for item in playlists}
-                    if not set(playlist_order).issubset(playlist_urls):
-                        return jsonify(error="Playlist order contains an unknown playlist."), 404
-                    ordered_urls = set(playlist_order)
-                    playlist_by_url = {item["url"]: item for item in playlists}
-                    playlists[:] = [
-                        *(playlist_by_url[url] for url in playlist_order),
-                        *(item for item in playlists if item["url"] not in ordered_urls),
-                    ]
-                if "title" in payload:
-                    existing["title"] = title.strip()
-                write_library(path, libraries)
-        except LibraryStorageError:
-            app.logger.exception("Could not update saved playlist")
-            return jsonify(error="Could not update the saved playlist."), 500
-        return jsonify(playlist=existing, playlists=playlists)
+                playlist = next((item for item in playlists if item["id"] == playlist_id), None)
+                if playlist is None:
+                    return jsonify(error="Playlist was not found."), 404
+                playlist["name"] = name.strip()
+                playlist["videos"] = videos
+                write_playlists(path, libraries)
+        except PlaylistStorageError:
+            app.logger.exception("Could not update playlist")
+            return jsonify(error="Could not save the playlist."), 500
+        return jsonify(playlist=playlist)
 
-    @app.delete("/api/saved-playlists")
-    def remove_saved_playlist():
-        payload = request.get_json(silent=True)
-        url = payload.get("url") if isinstance(payload, dict) else None
-        playlist_url = get_youtube_playlist_url(url) if isinstance(url, str) else None
-        if playlist_url is None:
-            return jsonify(error="Provide a valid YouTube playlist URL."), 400
-
+    @app.delete("/api/playlists/<playlist_id>")
+    def delete_playlist(playlist_id):
         try:
-            with LIBRARY_LOCK:
+            with PLAYLISTS_LOCK:
                 path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
-                libraries = read_library(path)
+                libraries = read_playlists(path)
                 playlists = libraries.get(session["username"], [])
-                remaining = [item for item in playlists if item["url"] != playlist_url]
+                remaining = [item for item in playlists if item["id"] != playlist_id]
                 if len(remaining) == len(playlists):
-                    return jsonify(error="Saved playlist was not found."), 404
+                    return jsonify(error="Playlist was not found."), 404
                 libraries[session["username"]] = remaining
-                write_library(path, libraries)
-        except LibraryStorageError:
-            app.logger.exception("Could not remove saved playlist")
-            return jsonify(error="Could not remove the saved playlist."), 500
+                write_playlists(path, libraries)
+        except PlaylistStorageError:
+            app.logger.exception("Could not delete playlist")
+            return jsonify(error="Could not remove the playlist."), 500
         return jsonify(playlists=remaining)
-
-    @app.post("/api/playlist")
-    def playlist():
-        payload = request.get_json(silent=True)
-        url = payload.get("url", "") if isinstance(payload, dict) else ""
-        if not isinstance(url, str) or not is_youtube_url(url):
-            return jsonify(error="Enter a valid HTTPS YouTube URL."), 400
-
-        options = {
-            "extract_flat": "in_playlist",
-            "ignoreerrors": True,
-            "noplaylist": False,
-            "quiet": True,
-            "no_warnings": True,
-            "socket_timeout": 15,
-        }
-        try:
-            with YoutubeDL(options) as ydl:
-                info = ydl.extract_info(url.strip(), download=False)
-        except DownloadError:
-            app.logger.exception("yt-dlp could not load the supplied playlist")
-            return jsonify(error="Could not load that YouTube playlist."), 422
-
-        entries = info.get("entries") if info else None
-        if entries is None and info and info.get("id"):
-            entries = [info]
-
-        tracks = []
-        for entry in entries or []:
-            if not entry or not entry.get("id"):
-                continue
-            video_id = str(entry["id"])
-            tracks.append(
-                {
-                    "id": video_id,
-                    "title": entry.get("title") or "Untitled video",
-                    "url": f"{YOUTUBE_VIDEO_URL}{urlencode({'v': video_id})}",
-                    "thumbnail_url": get_thumbnail_url(entry),
-                }
-            )
-
-        if not tracks:
-            return jsonify(error="No playable videos were found in that playlist."), 422
-
-        return jsonify(title=info.get("title") or "YouTube playlist", tracks=tracks)
 
     @app.post("/api/resolve")
     def resolve():
         payload = request.get_json(silent=True)
         url = payload.get("url", "") if isinstance(payload, dict) else ""
-        if not isinstance(url, str) or not is_youtube_url(url):
+        if not isinstance(url, str) or not is_youtube_video_url(url):
             return jsonify(error="Enter a valid HTTPS YouTube video URL."), 400
 
         options = {
