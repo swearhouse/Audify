@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import tempfile
 import uuid
@@ -329,6 +330,71 @@ def create_app() -> Flask:
             app.logger.exception("Could not load the user's playlists")
             return jsonify(error=str(error)), 500
         return jsonify(playlists=playlists)
+
+    @app.post("/api/youtube/search")
+    def search_youtube():
+        payload = request.get_json(silent=True)
+        query = payload.get("query") if isinstance(payload, dict) else None
+        if (
+            not isinstance(query, str)
+            or not query.strip()
+            or len(query.strip()) > 200
+        ):
+            return jsonify(error="Enter a search query up to 200 characters."), 400
+
+        options = {
+            "extract_flat": True,
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "socket_timeout": 15,
+        }
+        try:
+            with YoutubeDL(options) as ydl:
+                info = ydl.extract_info(f"ytsearch30:{query.strip()}", download=False)
+        except DownloadError:
+            app.logger.exception("yt-dlp could not search YouTube")
+            return jsonify(error="Could not search YouTube right now."), 422
+
+        entries = info.get("entries") if isinstance(info, dict) else None
+        results = []
+        if isinstance(entries, (list, tuple)):
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                video_id = entry.get("id")
+                title = entry.get("title")
+                if (
+                    not isinstance(video_id, str)
+                    or not video_id.strip()
+                    or not isinstance(title, str)
+                    or not title.strip()
+                ):
+                    continue
+                link = (
+                    "https://www.youtube.com/watch?"
+                    f"{urlencode({'v': video_id.strip()})}"
+                )
+                if not is_youtube_video_url(link):
+                    continue
+                duration = entry.get("duration")
+                if (
+                    not isinstance(duration, (int, float))
+                    or not math.isfinite(duration)
+                    or duration < 0
+                ):
+                    duration = None
+                results.append(
+                    {
+                        "name": title.strip()[:200],
+                        "link": link,
+                        "duration": duration,
+                    }
+                )
+                if len(results) == 30:
+                    break
+
+        return jsonify(results=results)
 
     @app.post("/api/playlists")
     def create_playlist():

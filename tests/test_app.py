@@ -57,14 +57,58 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'id="add-playlist-button"' in response.data
     assert b'id="add-song-button"' in response.data
     assert b">Add Song</button>" in response.data
+    assert b'id="youtube-search-button"' in response.data
+    assert b">Search YouTube</button>" in response.data
+    assert b'id="youtube-search-section"' in response.data
+    assert b'id="youtube-search-form"' in response.data
+    assert b'id="youtube-search-query"' in response.data
+    assert b'id="youtube-search-results"' in response.data
+    assert b".youtube-search-thumbnail" not in response.data
+    assert b'createElement("img")' not in response.data.split(
+        b"function renderYoutubeSearchResults(results)", 1
+    )[1].split(b"async function searchYoutube", 1)[0]
+    assert b'id="youtube-search-section" class="queue-card"' in response.data
+    assert b'fetch("/api/youtube/search"' in response.data
+    assert b'ytsearch30:' not in response.data
+    assert b"function showYoutubeSearch(showSearch)" in response.data
+    assert b"function loadPlaylist(playlist) {\n        showYoutubeSearch(false);" in response.data
+    assert b"function renderYoutubeSearchResults(results)" in response.data
+    search_renderer = response.data.split(
+        b"function renderYoutubeSearchResults(results)", 1
+    )[1].split(b"async function searchYoutube", 1)[0]
+    assert b'createElement("span")' in search_renderer
+    assert b'createElement("a")' not in search_renderer
+    assert b"title.href = result.link;" not in search_renderer
+    assert b'addButton.textContent = "Add to playlist";' in response.data
+    assert b".youtube-search-result-title" in response.data
+    assert b"text-overflow: ellipsis;" in response.data
+    assert b"width: 100px;" in response.data
+    assert b"justify-self: end;" in response.data
+    assert b"min-height: 28px;" in response.data
+    assert b"padding: 0.2rem 0.4rem;" in response.data
+    assert b"font-size: 11px;" in response.data
+    assert b"item.addEventListener(\"click\", (event) => {" in response.data
+    assert b"if (event.target.closest(\"button\")) {" in response.data
+    assert b"selectTrack(0);" in response.data
+    assert b"event.stopPropagation();" in response.data
+    assert b"openAddSongDialog({ name: result.name, link: result.link });" in response.data
+    assert b"videoAddUrl.required = !song;" in response.data
     assert b'id="playlist-editor-form"' in response.data
     assert b'id="delete-playlist-button"' in response.data
     assert b'id="import-playlist-button"' in response.data
+    assert response.data.count(
+        b'class="icon-button dialog-close-button" type="button" data-close-dialog'
+    ) == 3
+    assert response.data.count(b'aria-label="Close" title="Close"') == 3
+    assert b'button.closest("dialog").close()' in response.data
     editor_dialog = response.data.split(b'<dialog id="playlist-editor"', 1)[1].split(
         b"</dialog>", 1
     )[0]
     assert b'<button id="delete-playlist-button" type="button" hidden>' in editor_dialog
     assert b'id="import-playlist-button"' in editor_dialog
+    assert b'id="playlist-video-search"' in editor_dialog
+    assert b'aria-label="Search videos in this playlist"' in editor_dialog
+    assert b".playlist-video-row[hidden] {\n        display: none;" in response.data
     assert b'id="add-video-button"' not in editor_dialog
     assert response.data.index(b'id="add-song-button"') < response.data.index(
         b'id="add-playlist-button"'
@@ -92,7 +136,14 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b"videoLink.textContent = video.name;" in response.data
     assert b"row.dataset.videoName = video.name;" in response.data
     assert b"row.dataset.videoLink = video.link;" in response.data
+    assert b"filterPlaylistVideoRows();" in response.data
+    assert (
+        b"row.hidden = !row.dataset.videoName.toLocaleLowerCase().includes(query);"
+        in response.data
+    )
+    assert b'playlistVideoFields.querySelectorAll(".playlist-video-row")' in response.data
     assert b"row.dataset.videoName, link: row.dataset.videoLink" in response.data
+    assert b'playlistVideoSearch.addEventListener("input", filterPlaylistVideoRows);' in response.data
     assert b"async function persistPlaylist(closeEditor)" in response.data
     assert b"async function addSongToSelectedPlaylists(event)" in response.data
     assert b"Select at least one playlist." in response.data
@@ -129,6 +180,7 @@ def test_homepage_requires_login(app):
     ("method", "path"),
     [
         ("get", "/api/playlists"),
+        ("post", "/api/youtube/search"),
         ("post", "/api/playlists"),
         ("post", "/api/playlists/import"),
         ("post", "/api/playlists/add-song"),
@@ -454,6 +506,61 @@ def test_add_song_to_playlists_rejects_invalid_or_unowned_playlist_ids(app, clie
         },
     ).status_code == 404
     assert client.get("/api/playlists").json["playlists"] == [created]
+
+
+def test_youtube_search_returns_up_to_thirty_results(client):
+    entries = [
+        {
+            "id": f"video-{index}",
+            "title": f"Song {index}",
+            "duration": 90 + index,
+            "thumbnail": f"https://i.ytimg.com/vi/video-{index}/mqdefault.jpg",
+        }
+        for index in range(32)
+    ]
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {
+            "entries": entries
+        }
+
+        response = client.post("/api/youtube/search", json={"query": "jazz"})
+
+    assert response.status_code == 200
+    assert len(response.json["results"]) == 30
+    assert response.json["results"][0] == {
+        "name": "Song 0",
+        "link": "https://www.youtube.com/watch?v=video-0",
+        "duration": 90,
+    }
+    options = youtube_dl.call_args.args[0]
+    assert options["extract_flat"] is True
+    youtube_dl.return_value.__enter__.return_value.extract_info.assert_called_once_with(
+        "ytsearch30:jazz",
+        download=False,
+    )
+
+
+@pytest.mark.parametrize("query", ["", "  ", "x" * 201])
+def test_youtube_search_rejects_invalid_queries(client, query):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        response = client.post("/api/youtube/search", json={"query": query})
+
+    assert response.status_code == 400
+    youtube_dl.assert_not_called()
+
+
+def test_youtube_search_reports_youtube_errors(client):
+    from yt_dlp.utils import DownloadError
+
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = (
+            DownloadError("search failed")
+        )
+
+        response = client.post("/api/youtube/search", json={"query": "jazz"})
+
+    assert response.status_code == 422
+    assert response.json == {"error": "Could not search YouTube right now."}
 
 
 def test_video_title_endpoint_returns_youtube_title_and_canonical_link(client):

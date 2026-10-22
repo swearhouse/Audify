@@ -127,7 +127,7 @@
       }
 
       #playlist-import-dialog h2 {
-        margin: 0 0 16px;
+        margin: 0;
         font-size: 18px;
       }
 
@@ -157,8 +157,19 @@
       }
 
       #video-add-dialog h2 {
-        margin: 0 0 16px;
+        margin: 0;
         font-size: 18px;
+      }
+
+      .dialog-heading-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .dialog-close-button {
+        flex: none;
       }
 
       .video-add-form {
@@ -255,6 +266,10 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 6px;
+      }
+
+      .playlist-video-row[hidden] {
+        display: none;
       }
 
       .playlist-video-row input {
@@ -391,6 +406,83 @@
       #add-song-button {
         width: 100%;
         margin: 0 0 10px;
+      }
+
+      #youtube-search-button {
+        width: 100%;
+        margin: 0 0 10px;
+      }
+
+      .youtube-search-form {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .youtube-search-form input {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .youtube-search-results {
+        display: grid;
+        gap: 8px;
+        max-height: 520px;
+        overflow-y: auto;
+        padding: 0;
+        list-style: none;
+      }
+
+      .youtube-search-result {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #0f141c;
+        cursor: pointer;
+      }
+
+      .youtube-search-result:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .youtube-search-result-info {
+        display: grid;
+        min-width: 0;
+        gap: 4px;
+      }
+
+      .youtube-search-result-title {
+        display: block;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        color: #edf1f7;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .youtube-search-duration {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .youtube-search-result > button {
+        width: 100px;
+        min-height: 28px;
+        justify-self: end;
+        padding: 0.2rem 0.4rem;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+
+      .youtube-search-status {
+        color: var(--muted);
       }
 
       #import-playlist-button {
@@ -596,6 +688,10 @@
         flex: none;
         flex-direction: column;
         padding: 22px;
+      }
+
+      .queue-card[hidden] {
+        display: none;
       }
 
       .queue-heading {
@@ -842,6 +938,7 @@
           <section class="saved-library" aria-label="Playlists">
             <p class="sidebar-label">Playlists</p>
             <p id="playlist-status" role="status" aria-live="polite"></p>
+            <button id="youtube-search-button" type="button" aria-pressed="false">Search YouTube</button>
             <button id="add-song-button" type="button">Add Song</button>
             <button id="add-playlist-button" type="button">Add playlist</button>
             <ul id="playlist-list"></ul>
@@ -919,6 +1016,24 @@
             </div>
           </div>
         </section>
+        <section id="youtube-search-section" class="queue-card" aria-labelledby="youtube-search-heading" hidden>
+          <div class="queue-heading">
+            <h2 id="youtube-search-heading">Search YouTube</h2>
+          </div>
+          <form id="youtube-search-form" class="youtube-search-form">
+            <input
+              id="youtube-search-query"
+              type="search"
+              maxlength="200"
+              placeholder="Search YouTube"
+              aria-label="Search YouTube"
+              required
+            >
+            <button id="youtube-search-submit" type="submit">Search</button>
+          </form>
+          <p id="youtube-search-status" class="youtube-search-status" role="status" aria-live="polite"></p>
+          <ol id="youtube-search-results" class="youtube-search-results" aria-label="YouTube search results"></ol>
+        </section>
         <section class="queue-card" aria-labelledby="queue-heading">
           <div class="queue-heading">
             <h2 id="queue-heading">Playlist</h2>
@@ -942,12 +1057,21 @@
           <h2 id="playlist-editor-heading">Add playlist</h2>
           <div class="playlist-editor-heading-actions">
             <button id="import-playlist-button" type="button">Import Playlist</button>
+            <button class="icon-button dialog-close-button" type="button" data-close-dialog aria-label="Close" title="Close">
+              <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
           </div>
         </div>
         <label class="playlist-editor-field" for="playlist-name">
           Playlist name
           <input id="playlist-name" type="text" maxlength="200" required>
         </label>
+        <input
+          id="playlist-video-search"
+          type="search"
+          placeholder="Search videos"
+          aria-label="Search videos in this playlist"
+        >
         <div id="playlist-video-fields" class="playlist-video-fields"></div>
         <p id="playlist-editor-status" role="status" aria-live="polite"></p>
         <div class="playlist-editor-actions">
@@ -961,7 +1085,12 @@
     </dialog>
     <dialog id="playlist-import-dialog" aria-labelledby="playlist-import-heading">
       <form id="playlist-import-form" class="playlist-import-form">
-        <h2 id="playlist-import-heading">Import YouTube playlist</h2>
+        <div class="dialog-heading-row">
+          <h2 id="playlist-import-heading">Import YouTube playlist</h2>
+          <button class="icon-button dialog-close-button" type="button" data-close-dialog aria-label="Close" title="Close">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
         <label class="playlist-editor-field" for="playlist-import-url">
           YouTube playlist link
           <input
@@ -979,8 +1108,13 @@
     </dialog>
     <dialog id="video-add-dialog" aria-labelledby="video-add-heading">
       <form id="video-add-form" class="video-add-form">
-        <h2 id="video-add-heading">Add Song</h2>
-        <label class="playlist-editor-field" for="video-add-url">
+        <div class="dialog-heading-row">
+          <h2 id="video-add-heading">Add Song</h2>
+          <button class="icon-button dialog-close-button" type="button" data-close-dialog aria-label="Close" title="Close">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <label id="video-add-link-field" class="playlist-editor-field" for="video-add-url">
           YouTube song link
           <input
             id="video-add-url"
@@ -1018,6 +1152,14 @@
       const trackList = document.querySelector("#tracks");
       const playlistSearch = document.querySelector("#playlist-search");
       const trackSearchStatus = document.querySelector("#track-search-status");
+      const playlistQueueSection = document.querySelector('[aria-labelledby="queue-heading"]');
+      const youtubeSearchButton = document.querySelector("#youtube-search-button");
+      const youtubeSearchSection = document.querySelector("#youtube-search-section");
+      const youtubeSearchForm = document.querySelector("#youtube-search-form");
+      const youtubeSearchQuery = document.querySelector("#youtube-search-query");
+      const youtubeSearchSubmit = document.querySelector("#youtube-search-submit");
+      const youtubeSearchStatus = document.querySelector("#youtube-search-status");
+      const youtubeSearchResults = document.querySelector("#youtube-search-results");
       const status = document.querySelector("#status");
       const playlistTitle = document.querySelector("#playlist-title");
       const playlistStatus = document.querySelector("#playlist-status");
@@ -1028,6 +1170,7 @@
       const playlistEditorForm = document.querySelector("#playlist-editor-form");
       const playlistEditorHeading = document.querySelector("#playlist-editor-heading");
       const playlistNameInput = document.querySelector("#playlist-name");
+      const playlistVideoSearch = document.querySelector("#playlist-video-search");
       const playlistVideoFields = document.querySelector("#playlist-video-fields");
       const playlistEditorStatus = document.querySelector("#playlist-editor-status");
       const cancelPlaylistButton = document.querySelector("#cancel-playlist-button");
@@ -1040,8 +1183,10 @@
       const submitPlaylistImport = document.querySelector("#submit-playlist-import");
       const cancelPlaylistImport = document.querySelector("#cancel-playlist-import");
       const videoAddDialog = document.querySelector("#video-add-dialog");
+      const videoAddHeading = document.querySelector("#video-add-heading");
       const videoAddForm = document.querySelector("#video-add-form");
       const videoAddUrl = document.querySelector("#video-add-url");
+      const videoAddLinkField = document.querySelector("#video-add-link-field");
       const songPlaylistOptions = document.querySelector("#song-playlist-options");
       const videoAddStatus = document.querySelector("#video-add-status");
       const submitVideoAdd = document.querySelector("#submit-video-add");
@@ -1070,6 +1215,7 @@
       let currentPlaylistTitle = "";
       let currentPlaylistId = null;
       let playlists = [];
+      let selectedSearchSong = null;
       let editingPlaylistId = null;
       let castContext = null;
       let castSession = null;
@@ -1081,6 +1227,11 @@
       let castMediaUpdateListener = null;
       let resolvedMedia = null;
       let isSeeking = false;
+      let youtubeSearchRequest = 0;
+
+      document.querySelectorAll("[data-close-dialog]").forEach((button) => {
+        button.addEventListener("click", () => button.closest("dialog").close());
+      });
 
       function formatTime(seconds) {
         if (!Number.isFinite(seconds) || seconds < 0) {
@@ -1650,6 +1801,7 @@
       }
 
       function loadPlaylist(playlist) {
+        showYoutubeSearch(false);
         const playbackContinues = castSession
           ? Boolean(remotePlayer && remotePlayer.isMediaLoaded && !remotePlayer.isPaused)
           : Boolean(resolvedMedia && !player.paused && !player.ended);
@@ -1685,6 +1837,106 @@
         playlistStatus.textContent = playlists.length
           ? `${playlists.length} playlist(s).`
           : "No playlists yet. Add one to get started.";
+      }
+
+      function showYoutubeSearch(showSearch) {
+        youtubeSearchButton.setAttribute("aria-pressed", String(showSearch));
+        youtubeSearchButton.textContent = showSearch ? "Back to Playlist" : "Search YouTube";
+        youtubeSearchSection.hidden = !showSearch;
+        playlistQueueSection.hidden = showSearch;
+        if (showSearch) {
+          youtubeSearchQuery.focus();
+        }
+      }
+
+      function renderYoutubeSearchResults(results) {
+        youtubeSearchResults.replaceChildren();
+        results.forEach((result) => {
+          const item = document.createElement("li");
+          item.classList.add("youtube-search-result");
+          item.setAttribute("role", "group");
+          const playResult = () => {
+            tracks = [{
+              title: result.name,
+              url: result.link,
+              thumbnail_url: null,
+            }];
+            currentIndex = -1;
+            currentPlaylistTitle = result.name;
+            currentPlaylistId = null;
+            playlistTitle.textContent = `${result.name} (search result)`;
+            playlistSearch.value = "";
+            renderTracks();
+            selectTrack(0);
+          };
+          item.addEventListener("click", (event) => {
+            if (event.target.closest("button")) {
+              return;
+            }
+            playResult();
+          });
+          const info = document.createElement("div");
+          info.classList.add("youtube-search-result-info");
+          const title = document.createElement("span");
+          title.classList.add("youtube-search-result-title");
+          title.textContent = result.name;
+          const duration = document.createElement("span");
+          duration.classList.add("youtube-search-duration");
+          duration.textContent = result.duration === null
+            ? "Duration unavailable"
+            : formatTime(result.duration);
+          info.append(title, duration);
+
+          const addButton = document.createElement("button");
+          addButton.type = "button";
+          addButton.textContent = "Add to playlist";
+          addButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            openAddSongDialog({ name: result.name, link: result.link });
+          });
+          item.append(info, addButton);
+          youtubeSearchResults.append(item);
+        });
+      }
+
+      async function searchYoutube(event) {
+        event.preventDefault();
+        const query = youtubeSearchQuery.value.trim();
+        if (!query) {
+          youtubeSearchStatus.textContent = "Enter a search query.";
+          return;
+        }
+
+        const requestId = ++youtubeSearchRequest;
+        youtubeSearchSubmit.disabled = true;
+        youtubeSearchStatus.textContent = "Searching YouTube…";
+        youtubeSearchResults.replaceChildren();
+        try {
+          const response = await fetch("/api/youtube/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not search YouTube.");
+          }
+          if (requestId !== youtubeSearchRequest) {
+            return;
+          }
+          renderYoutubeSearchResults(result.results);
+          youtubeSearchStatus.textContent = result.results.length
+            ? `${result.results.length} result(s).`
+            : "No YouTube results found.";
+        } catch (error) {
+          if (requestId === youtubeSearchRequest) {
+            youtubeSearchStatus.textContent = error.message;
+          }
+        } finally {
+          if (requestId === youtubeSearchRequest) {
+            youtubeSearchSubmit.disabled = false;
+          }
+        }
       }
 
       function renderPlaylists() {
@@ -1727,7 +1979,15 @@
         removeButton.addEventListener("click", () => row.remove());
         row.append(videoLink, removeButton);
         playlistVideoFields.append(row);
+        filterPlaylistVideoRows();
         return row;
+      }
+
+      function filterPlaylistVideoRows() {
+        const query = playlistVideoSearch.value.trim().toLocaleLowerCase();
+        playlistVideoFields.querySelectorAll(".playlist-video-row").forEach((row) => {
+          row.hidden = !row.dataset.videoName.toLocaleLowerCase().includes(query);
+        });
       }
 
       function openPlaylistEditor(playlist = null) {
@@ -1735,6 +1995,7 @@
         playlistEditorHeading.textContent = playlist ? "Edit playlist" : "Add playlist";
         deletePlaylistButton.hidden = !playlist;
         playlistNameInput.value = playlist ? playlist.name : "";
+        playlistVideoSearch.value = "";
         playlistEditorStatus.textContent = "";
         playlistVideoFields.replaceChildren();
         (playlist ? playlist.videos : [])
@@ -1767,16 +2028,22 @@
         });
       }
 
-      async function openAddSongDialog() {
+      async function openAddSongDialog(song = null) {
         videoAddForm.reset();
         videoAddStatus.textContent = "";
+        selectedSearchSong = song;
+        videoAddHeading.textContent = song ? "Add to playlists" : "Add Song";
+        videoAddLinkField.hidden = Boolean(song);
+        videoAddUrl.required = !song;
         songPlaylistOptions.replaceChildren();
         const loadingMessage = document.createElement("p");
         loadingMessage.classList.add("song-playlist-empty");
         loadingMessage.textContent = "Loading playlists…";
         songPlaylistOptions.append(loadingMessage);
         videoAddDialog.showModal();
-        videoAddUrl.focus();
+        if (!song) {
+          videoAddUrl.focus();
+        }
         try {
           await refreshPlaylists();
           renderSongPlaylistChoices();
@@ -1798,21 +2065,27 @@
           submitVideoAdd.disabled = false;
           return;
         }
-        videoAddStatus.textContent = "Looking up song and saving to playlists…";
+        videoAddStatus.textContent = selectedSearchSong
+          ? "Saving song to playlists…"
+          : "Looking up song and saving to playlists…";
         try {
-          const titleResponse = await fetch("/api/videos/title", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: videoAddUrl.value.trim() }),
-          });
-          const titleResult = await titleResponse.json();
-          if (!titleResponse.ok) {
-            throw new Error(titleResult.error || "Could not get the song title.");
+          let song = selectedSearchSong;
+          if (!song) {
+            const titleResponse = await fetch("/api/videos/title", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: videoAddUrl.value.trim() }),
+            });
+            const titleResult = await titleResponse.json();
+            if (!titleResponse.ok) {
+              throw new Error(titleResult.error || "Could not get the song title.");
+            }
+            song = titleResult.video;
           }
           const response = await fetch("/api/playlists/add-song", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ playlist_ids: playlistIds, video: titleResult.video }),
+            body: JSON.stringify({ playlist_ids: playlistIds, video: song }),
           });
           const result = await response.json();
           if (!response.ok) {
@@ -1823,7 +2096,7 @@
           try {
             await refreshPlaylists();
             playlistStatus.textContent =
-              `Added "${titleResult.video.name}" to ${playlistIds.length} playlist(s).`;
+              `Added "${song.name}" to ${playlistIds.length} playlist(s).`;
           } catch (error) {
             playlistStatus.textContent =
               `Song added, but the playlist list could not refresh: ${error.message}`;
@@ -1941,6 +2214,10 @@
 
       addSongButton.addEventListener("click", openAddSongDialog);
       addPlaylistButton.addEventListener("click", () => openPlaylistEditor());
+      youtubeSearchButton.addEventListener("click", () => {
+        showYoutubeSearch(youtubeSearchSection.hidden);
+      });
+      youtubeSearchForm.addEventListener("submit", searchYoutube);
       cancelVideoAdd.addEventListener("click", () => videoAddDialog.close());
       videoAddForm.addEventListener("submit", addSongToSelectedPlaylists);
       cancelPlaylistButton.addEventListener("click", () => playlistEditor.close());
@@ -1961,6 +2238,7 @@
       nextButton.addEventListener("click", () => selectTrack(currentIndex + 1));
       shuffleButton.addEventListener("click", shuffleTracks);
       playlistSearch.addEventListener("input", renderTracks);
+      playlistVideoSearch.addEventListener("input", filterPlaylistVideoRows);
       player.addEventListener("ended", () => {
         if (currentIndex < tracks.length - 1) {
           advanceTrack(currentIndex + 1);

@@ -4,8 +4,10 @@ Bragi is a small, self-hosted web audio player for a trusted home network.
 Create playlists in the app by adding YouTube video links; Bragi looks up each
 video's title automatically. Use Add Song to choose one or more playlists for
 the song. Bragi checks each selected playlist for an existing copy of the
-video before adding it. You can also import a YouTube playlist URL to add its
-videos automatically. Playlists are private to each user.
+video before adding it. Search YouTube in the app to browse the first 30
+results, play a result in the built-in player, or add it to one or more
+playlists. You can also import a YouTube playlist URL to add its videos
+automatically. Playlists are private to each user.
 Bragi supports play/pause, stop, seeking, previous/next playback, volume, and
 searching track titles in the loaded playlist. Videos play in the order listed
 in each playlist. Bragi resolves audio streams when you play a track; it does
