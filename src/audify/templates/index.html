@@ -172,6 +172,46 @@
         gap: 8px;
       }
 
+      .song-playlist-choices {
+        display: grid;
+        gap: 8px;
+        max-height: 180px;
+        overflow-y: auto;
+        margin: 0;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      .song-playlist-choices legend {
+        padding: 0 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .song-playlist-options {
+        display: grid;
+        gap: 6px;
+      }
+
+      .song-playlist-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .song-playlist-option input {
+        width: 18px;
+        flex: none;
+        margin: 0;
+        accent-color: var(--accent);
+      }
+
+      .song-playlist-empty {
+        margin: 0;
+        color: var(--muted);
+      }
+
       #playlist-editor::backdrop {
         background: #05070bbf;
         backdrop-filter: blur(3px);
@@ -344,6 +384,11 @@
       }
 
       #add-playlist-button {
+        width: 100%;
+        margin: 0 0 10px;
+      }
+
+      #add-song-button {
         width: 100%;
         margin: 0 0 10px;
       }
@@ -797,6 +842,7 @@
           <section class="saved-library" aria-label="Playlists">
             <p class="sidebar-label">Playlists</p>
             <p id="playlist-status" role="status" aria-live="polite"></p>
+            <button id="add-song-button" type="button">Add Song</button>
             <button id="add-playlist-button" type="button">Add playlist</button>
             <ul id="playlist-list"></ul>
             <p class="sidebar-note">Your playlists are private to your account.</p>
@@ -896,7 +942,6 @@
           <h2 id="playlist-editor-heading">Add playlist</h2>
           <div class="playlist-editor-heading-actions">
             <button id="import-playlist-button" type="button">Import Playlist</button>
-            <button id="add-video-button" type="button">Add video</button>
           </div>
         </div>
         <label class="playlist-editor-field" for="playlist-name">
@@ -934,9 +979,9 @@
     </dialog>
     <dialog id="video-add-dialog" aria-labelledby="video-add-heading">
       <form id="video-add-form" class="video-add-form">
-        <h2 id="video-add-heading">Add YouTube video</h2>
+        <h2 id="video-add-heading">Add Song</h2>
         <label class="playlist-editor-field" for="video-add-url">
-          YouTube video link
+          YouTube song link
           <input
             id="video-add-url"
             type="url"
@@ -944,10 +989,14 @@
             required
           >
         </label>
+        <fieldset id="song-playlist-choices" class="song-playlist-choices">
+          <legend>Add to playlists</legend>
+          <div id="song-playlist-options" class="song-playlist-options"></div>
+        </fieldset>
         <p id="video-add-status" role="status" aria-live="polite"></p>
         <div class="video-add-actions">
           <button id="cancel-video-add" type="button">Cancel</button>
-          <button id="submit-video-add" type="submit">Add video</button>
+          <button id="submit-video-add" type="submit">Add Song</button>
         </div>
       </form>
     </dialog>
@@ -973,6 +1022,7 @@
       const playlistTitle = document.querySelector("#playlist-title");
       const playlistStatus = document.querySelector("#playlist-status");
       const playlistList = document.querySelector("#playlist-list");
+      const addSongButton = document.querySelector("#add-song-button");
       const addPlaylistButton = document.querySelector("#add-playlist-button");
       const playlistEditor = document.querySelector("#playlist-editor");
       const playlistEditorForm = document.querySelector("#playlist-editor-form");
@@ -980,7 +1030,6 @@
       const playlistNameInput = document.querySelector("#playlist-name");
       const playlistVideoFields = document.querySelector("#playlist-video-fields");
       const playlistEditorStatus = document.querySelector("#playlist-editor-status");
-      const addVideoButton = document.querySelector("#add-video-button");
       const cancelPlaylistButton = document.querySelector("#cancel-playlist-button");
       const savePlaylistButton = document.querySelector("#save-playlist-button");
       const deletePlaylistButton = document.querySelector("#delete-playlist-button");
@@ -993,6 +1042,7 @@
       const videoAddDialog = document.querySelector("#video-add-dialog");
       const videoAddForm = document.querySelector("#video-add-form");
       const videoAddUrl = document.querySelector("#video-add-url");
+      const songPlaylistOptions = document.querySelector("#song-playlist-options");
       const videoAddStatus = document.querySelector("#video-add-status");
       const submitVideoAdd = document.querySelector("#submit-video-add");
       const cancelVideoAdd = document.querySelector("#cancel-video-add");
@@ -1677,6 +1727,7 @@
         removeButton.addEventListener("click", () => row.remove());
         row.append(videoLink, removeButton);
         playlistVideoFields.append(row);
+        return row;
       }
 
       function openPlaylistEditor(playlist = null) {
@@ -1692,25 +1743,91 @@
         playlistNameInput.focus();
       }
 
-      async function addVideoFromLink(event) {
+      function renderSongPlaylistChoices() {
+        songPlaylistOptions.replaceChildren();
+        if (!playlists.length) {
+          const emptyMessage = document.createElement("p");
+          emptyMessage.classList.add("song-playlist-empty");
+          emptyMessage.textContent = "Create a playlist before adding a song.";
+          songPlaylistOptions.append(emptyMessage);
+          return;
+        }
+
+        playlists.forEach((playlist) => {
+          const label = document.createElement("label");
+          label.classList.add("song-playlist-option");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.name = "playlist";
+          checkbox.value = playlist.id;
+          const name = document.createElement("span");
+          name.textContent = playlist.name;
+          label.append(checkbox, name);
+          songPlaylistOptions.append(label);
+        });
+      }
+
+      async function openAddSongDialog() {
+        videoAddForm.reset();
+        videoAddStatus.textContent = "";
+        songPlaylistOptions.replaceChildren();
+        const loadingMessage = document.createElement("p");
+        loadingMessage.classList.add("song-playlist-empty");
+        loadingMessage.textContent = "Loading playlists…";
+        songPlaylistOptions.append(loadingMessage);
+        videoAddDialog.showModal();
+        videoAddUrl.focus();
+        try {
+          await refreshPlaylists();
+          renderSongPlaylistChoices();
+        } catch (error) {
+          videoAddStatus.textContent = error.message;
+          songPlaylistOptions.replaceChildren();
+        }
+      }
+
+      async function addSongToSelectedPlaylists(event) {
         event.preventDefault();
         submitVideoAdd.disabled = true;
-        videoAddStatus.textContent = "Looking up video…";
+        const playlistIds = Array.from(
+          songPlaylistOptions.querySelectorAll('input[name="playlist"]:checked'),
+          (checkbox) => checkbox.value,
+        );
+        if (!playlistIds.length) {
+          videoAddStatus.textContent = "Select at least one playlist.";
+          submitVideoAdd.disabled = false;
+          return;
+        }
+        videoAddStatus.textContent = "Looking up song and saving to playlists…";
         try {
-          const response = await fetch("/api/videos/title", {
+          const titleResponse = await fetch("/api/videos/title", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url: videoAddUrl.value.trim() }),
           });
+          const titleResult = await titleResponse.json();
+          if (!titleResponse.ok) {
+            throw new Error(titleResult.error || "Could not get the song title.");
+          }
+          const response = await fetch("/api/playlists/add-song", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ playlist_ids: playlistIds, video: titleResult.video }),
+          });
           const result = await response.json();
           if (!response.ok) {
-            throw new Error(result.error || "Could not get the video title.");
+            throw new Error(result.error || "Could not add the song to those playlists.");
           }
-          addVideoEditorRow(result.video);
           videoAddDialog.close();
           videoAddForm.reset();
-          playlistEditorStatus.textContent =
-            `Added "${result.video.name}". Save the playlist to keep your changes.`;
+          try {
+            await refreshPlaylists();
+            playlistStatus.textContent =
+              `Added "${titleResult.video.name}" to ${playlistIds.length} playlist(s).`;
+          } catch (error) {
+            playlistStatus.textContent =
+              `Song added, but the playlist list could not refresh: ${error.message}`;
+          }
         } catch (error) {
           videoAddStatus.textContent = error.message;
         } finally {
@@ -1718,8 +1835,7 @@
         }
       }
 
-      async function savePlaylist(event) {
-        event.preventDefault();
+      async function persistPlaylist(closeEditor) {
         savePlaylistButton.disabled = true;
         const videos = Array.from(
           playlistVideoFields.querySelectorAll(".playlist-video-row"),
@@ -1739,17 +1855,40 @@
           if (!response.ok) {
             throw new Error(result.error || "Could not save the playlist.");
           }
-          playlistEditor.close();
+          editingPlaylistId = result.playlist.id;
+          playlistEditorHeading.textContent = "Edit playlist";
+          deletePlaylistButton.hidden = false;
           if (currentPlaylistId === result.playlist.id) {
             currentPlaylistTitle = result.playlist.name;
             playlistTitle.textContent = `${currentPlaylistTitle} (${tracks.length} songs)`;
           }
-          await refreshPlaylists();
-          playlistStatus.textContent = "Playlist saved.";
-        } catch (error) {
-          playlistStatus.textContent = error.message;
+          let refreshError = null;
+          try {
+            await refreshPlaylists();
+          } catch (error) {
+            refreshError = error;
+          }
+          if (closeEditor) {
+            playlistEditor.close();
+          }
+          if (refreshError) {
+            playlistStatus.textContent =
+              `Playlist saved, but the playlist list could not refresh: ${refreshError.message}`;
+          } else if (closeEditor) {
+            playlistStatus.textContent = "Playlist saved.";
+          }
+          return result.playlist;
         } finally {
           savePlaylistButton.disabled = false;
+        }
+      }
+
+      async function savePlaylist(event) {
+        event.preventDefault();
+        try {
+          await persistPlaylist(true);
+        } catch (error) {
+          playlistStatus.textContent = error.message;
         }
       }
 
@@ -1800,15 +1939,10 @@
         }
       }
 
+      addSongButton.addEventListener("click", openAddSongDialog);
       addPlaylistButton.addEventListener("click", () => openPlaylistEditor());
-      addVideoButton.addEventListener("click", () => {
-        videoAddForm.reset();
-        videoAddStatus.textContent = "";
-        videoAddDialog.showModal();
-        videoAddUrl.focus();
-      });
       cancelVideoAdd.addEventListener("click", () => videoAddDialog.close());
-      videoAddForm.addEventListener("submit", addVideoFromLink);
+      videoAddForm.addEventListener("submit", addSongToSelectedPlaylists);
       cancelPlaylistButton.addEventListener("click", () => playlistEditor.close());
       playlistEditorForm.addEventListener("submit", savePlaylist);
       deletePlaylistButton.addEventListener("click", () => {

@@ -105,25 +105,35 @@ def is_youtube_url(value: str) -> bool:
 
 
 def is_youtube_video_url(value: str) -> bool:
+    return get_youtube_video_id(value) is not None
+
+
+def get_youtube_video_id(value: str) -> str | None:
     try:
         parsed = urlsplit(value.strip())
     except ValueError:
-        return False
+        return None
     if not is_youtube_url(value):
-        return False
+        return None
 
     if parsed.hostname == "youtu.be":
         path_parts = parsed.path.strip("/").split("/")
-        return len(path_parts) == 1 and bool(path_parts[0])
+        return path_parts[0] if len(path_parts) == 1 and path_parts[0] else None
     if parsed.path == "/watch":
         video_ids = parse_qs(parsed.query, keep_blank_values=True).get("v", [])
-        return len(video_ids) == 1 and bool(video_ids[0].strip())
+        return (
+            video_ids[0].strip()
+            if len(video_ids) == 1 and video_ids[0].strip()
+            else None
+        )
     path_parts = parsed.path.strip("/").split("/")
-    return (
+    if (
         len(path_parts) == 2
         and path_parts[0] in {"embed", "live", "shorts"}
-        and bool(path_parts[1])
-    )
+        and path_parts[1]
+    ):
+        return path_parts[1]
+    return None
 
 
 def get_youtube_playlist_url(value: str) -> str | None:
@@ -453,6 +463,72 @@ def create_app() -> Flask:
             app.logger.exception("Could not update playlist")
             return jsonify(error="Could not save the playlist."), 500
         return jsonify(playlist=playlist)
+
+    @app.post("/api/playlists/add-song")
+    def add_song_to_playlists():
+        payload = request.get_json(silent=True)
+        playlist_ids = payload.get("playlist_ids") if isinstance(payload, dict) else None
+        videos = (
+            validate_videos([payload.get("video")])
+            if isinstance(payload, dict)
+            else None
+        )
+        if (
+            not isinstance(playlist_ids, list)
+            or not playlist_ids
+            or len(playlist_ids) > 5000
+            or any(
+                not isinstance(playlist_id, str)
+                or not playlist_id.strip()
+                or len(playlist_id) > 200
+                for playlist_id in playlist_ids
+            )
+            or len(playlist_ids) != len(set(playlist_ids))
+            or videos is None
+        ):
+            return jsonify(error="Select playlists and provide a valid video."), 400
+
+        try:
+            with PLAYLISTS_LOCK:
+                path = Path(app.config["PLAYLIST_LIBRARY_PATH"])
+                libraries = read_playlists(path)
+                playlists = libraries.get(session["username"], [])
+                selected_playlists = [
+                    playlist
+                    for playlist in playlists
+                    if playlist.get("id") in playlist_ids
+                ]
+                if len(selected_playlists) != len(playlist_ids):
+                    return jsonify(error="One or more playlists were not found."), 404
+                video_id = get_youtube_video_id(videos[0]["link"])
+                duplicate_playlists = [
+                    playlist["name"]
+                    for playlist in selected_playlists
+                    if any(
+                        get_youtube_video_id(existing_video["link"]) == video_id
+                        for existing_video in playlist["videos"]
+                    )
+                ]
+                if duplicate_playlists:
+                    names = ", ".join(duplicate_playlists)
+                    return jsonify(
+                        error=f"This song is already in: {names}.",
+                        duplicate_playlists=duplicate_playlists,
+                    ), 409
+                if any(
+                    len(playlist["videos"]) >= 5000
+                    for playlist in selected_playlists
+                ):
+                    return jsonify(
+                        error="A selected playlist has reached the 5,000-song limit."
+                    ), 400
+                for playlist in selected_playlists:
+                    playlist["videos"].append(videos[0])
+                write_playlists(path, libraries)
+        except PlaylistStorageError:
+            app.logger.exception("Could not add song to playlists")
+            return jsonify(error="Could not save the song to those playlists."), 500
+        return jsonify(playlists=selected_playlists)
 
     @app.delete("/api/playlists/<playlist_id>")
     def delete_playlist(playlist_id):

@@ -55,6 +55,8 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'id="playlist-status" role="status" aria-live="polite"' in response.data
     assert b"Your playlists are private to your account." in response.data
     assert b'id="add-playlist-button"' in response.data
+    assert b'id="add-song-button"' in response.data
+    assert b">Add Song</button>" in response.data
     assert b'id="playlist-editor-form"' in response.data
     assert b'id="delete-playlist-button"' in response.data
     assert b'id="import-playlist-button"' in response.data
@@ -63,7 +65,10 @@ def test_homepage_renders_playlist_library_and_player(client):
     )[0]
     assert b'<button id="delete-playlist-button" type="button" hidden>' in editor_dialog
     assert b'id="import-playlist-button"' in editor_dialog
-    assert b'id="add-video-button"' in editor_dialog
+    assert b'id="add-video-button"' not in editor_dialog
+    assert response.data.index(b'id="add-song-button"') < response.data.index(
+        b'id="add-playlist-button"'
+    )
     assert b"deletePlaylistButton.hidden = !playlist;" in response.data
     assert b"deleteButton.addEventListener" not in response.data
     assert b'<button id="import-playlist-button"' not in response.data.split(
@@ -72,13 +77,25 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b"Import YouTube playlist" in response.data
     assert b'id="video-add-dialog"' in response.data
     assert b'id="video-add-form"' in response.data
+    assert b'<h2 id="video-add-heading">Add Song</h2>' in response.data
+    assert b'id="song-playlist-choices"' in response.data
+    assert b'id="song-playlist-options"' in response.data
+    assert b'checkbox.name = "playlist";' in response.data
     assert b'fetch("/api/videos/title"' in response.data
+    assert b'fetch("/api/playlists/add-song"' in response.data
+    assert (
+        b'throw new Error(result.error || "Could not add the song to those playlists.");'
+        in response.data
+    )
     assert b'const videoLink = document.createElement("a");' in response.data
     assert b"videoLink.href = video.link;" in response.data
     assert b"videoLink.textContent = video.name;" in response.data
     assert b"row.dataset.videoName = video.name;" in response.data
     assert b"row.dataset.videoLink = video.link;" in response.data
     assert b"row.dataset.videoName, link: row.dataset.videoLink" in response.data
+    assert b"async function persistPlaylist(closeEditor)" in response.data
+    assert b"async function addSongToSelectedPlaylists(event)" in response.data
+    assert b"Select at least one playlist." in response.data
     assert b'fetch("/api/playlists/import"' in response.data
     assert b'fetch("/api/playlists")' in response.data
     assert b"video.name" in response.data
@@ -114,6 +131,7 @@ def test_homepage_requires_login(app):
         ("get", "/api/playlists"),
         ("post", "/api/playlists"),
         ("post", "/api/playlists/import"),
+        ("post", "/api/playlists/add-song"),
         ("post", "/api/videos/title"),
         ("put", "/api/playlists/example"),
         ("delete", "/api/playlists/example"),
@@ -329,6 +347,113 @@ def test_playlist_can_be_edited_and_deleted(client):
     deleted = client.delete(f"/api/playlists/{playlist_id}")
     assert deleted.status_code == 200
     assert deleted.json == {"playlists": []}
+
+
+def test_song_can_be_added_to_multiple_playlists(client, app):
+    first = client.post(
+        "/api/playlists",
+        json={
+            "name": "First mix",
+            "videos": [{"name": "Existing song", "link": "https://youtu.be/existing"}],
+        },
+    ).json["playlist"]
+    second = client.post(
+        "/api/playlists",
+        json={"name": "Second mix", "videos": []},
+    ).json["playlist"]
+    new_song = {"name": "New song", "link": "https://youtu.be/new-song"}
+
+    response = client.post(
+        "/api/playlists/add-song",
+        json={
+            "playlist_ids": [first["id"], second["id"]],
+            "video": new_song,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json["playlists"] == [
+        {
+            **first,
+            "videos": [first["videos"][0], new_song],
+        },
+        {
+            **second,
+            "videos": [new_song],
+        },
+    ]
+    stored = json.loads(
+        app.config["PLAYLIST_LIBRARY_PATH"].read_text(encoding="utf-8")
+    )["admin"]
+    assert stored[0]["videos"] == [first["videos"][0], new_song]
+    assert stored[1]["videos"] == [new_song]
+
+
+def test_song_add_rejects_duplicate_video_across_selected_playlists_atomically(
+    client,
+    app,
+):
+    first = client.post(
+        "/api/playlists",
+        json={
+            "name": "First mix",
+            "videos": [{"name": "Existing song", "link": "https://youtu.be/song-id"}],
+        },
+    ).json["playlist"]
+    second = client.post(
+        "/api/playlists",
+        json={"name": "Second mix", "videos": []},
+    ).json["playlist"]
+
+    response = client.post(
+        "/api/playlists/add-song",
+        json={
+            "playlist_ids": [first["id"], second["id"]],
+            "video": {
+                "name": "Existing song",
+                "link": "https://www.youtube.com/watch?v=song-id",
+            },
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json == {
+        "error": "This song is already in: First mix.",
+        "duplicate_playlists": ["First mix"],
+    }
+    assert client.get("/api/playlists").json["playlists"] == [first, second]
+    stored = json.loads(
+        app.config["PLAYLIST_LIBRARY_PATH"].read_text(encoding="utf-8")
+    )["admin"]
+    assert stored == [first, second]
+
+
+def test_add_song_to_playlists_rejects_invalid_or_unowned_playlist_ids(app, client):
+    created = client.post(
+        "/api/playlists",
+        json={"name": "Private", "videos": []},
+    ).json["playlist"]
+    guest_client = app.test_client()
+    guest_client.post("/api/login", json={"username": "quest", "password": "guest"})
+
+    response = guest_client.post(
+        "/api/playlists/add-song",
+        json={
+            "playlist_ids": [created["id"]],
+            "video": {"name": "Song", "link": "https://youtu.be/song"},
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json == {"error": "One or more playlists were not found."}
+    assert client.post(
+        "/api/playlists/add-song",
+        json={
+            "playlist_ids": [created["id"], "missing"],
+            "video": {"name": "Song", "link": "https://youtu.be/song"},
+        },
+    ).status_code == 404
+    assert client.get("/api/playlists").json["playlists"] == [created]
 
 
 def test_video_title_endpoint_returns_youtube_title_and_canonical_link(client):
