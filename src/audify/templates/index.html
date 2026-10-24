@@ -2247,6 +2247,113 @@
         }
       });
 
+      if ("mediaSession" in navigator) {
+        const mediaSession = navigator.mediaSession;
+        const setActionHandler = (action, handler) => {
+          try {
+            mediaSession.setActionHandler(action, handler);
+          } catch (error) {
+            // This browser does not support the action.
+          }
+        };
+
+        const updateMediaSessionMetadata = () => {
+          if (!resolvedMedia) {
+            mediaSession.metadata = null;
+            return;
+          }
+          mediaSession.metadata = new MediaMetadata({
+            title: resolvedMedia.title || "Bragi",
+            artist: "Bragi",
+            album: currentPlaylistTitle,
+            artwork: resolvedMedia.thumbnailUrl
+              ? [{ src: resolvedMedia.thumbnailUrl }]
+              : [],
+          });
+        };
+
+        const updateMediaSessionPosition = () => {
+          if (
+            castSession
+            || !Number.isFinite(player.duration)
+            || player.duration <= 0
+            || typeof mediaSession.setPositionState !== "function"
+          ) {
+            return;
+          }
+          try {
+            mediaSession.setPositionState({
+              duration: player.duration,
+              playbackRate: player.playbackRate || 1,
+              position: Math.min(player.currentTime, player.duration),
+            });
+          } catch (error) {
+            // Ignore invalid position state.
+          }
+        };
+
+        const updateMediaSessionState = () => {
+          mediaSession.playbackState = !resolvedMedia
+            ? "none"
+            : player.paused ? "paused" : "playing";
+          updateMediaSessionPosition();
+        };
+
+        setActionHandler("play", () => {
+          if (castSession || !player.paused) {
+            return;
+          }
+          playPauseButton.click();
+        });
+        setActionHandler("pause", () => {
+          if (castSession || player.paused) {
+            return;
+          }
+          playPauseButton.click();
+        });
+        setActionHandler("stop", () => stopButton.click());
+        setActionHandler("previoustrack", () => {
+          if (currentIndex > 0) {
+            selectTrack(currentIndex - 1);
+          }
+        });
+        setActionHandler("nexttrack", () => {
+          if (currentIndex >= 0 && currentIndex < tracks.length - 1) {
+            selectTrack(currentIndex + 1);
+          }
+        });
+        setActionHandler("seekto", (details) => {
+          if (
+            !castSession
+            && resolvedMedia
+            && Number.isFinite(player.duration)
+            && Number.isFinite(details.seekTime)
+          ) {
+            player.currentTime = Math.min(details.seekTime, player.duration);
+            updateMediaSessionPosition();
+          }
+        });
+        setActionHandler("seekbackward", (details) => {
+          player.currentTime = Math.max(0, player.currentTime - (details.seekOffset || 10));
+        });
+        setActionHandler("seekforward", (details) => {
+          if (Number.isFinite(player.duration)) {
+            player.currentTime = Math.min(
+              player.duration,
+              player.currentTime + (details.seekOffset || 10),
+            );
+          }
+        });
+
+        ["play", "pause", "ended", "emptied", "durationchange", "seeked"].forEach(
+          (eventType) => player.addEventListener(eventType, updateMediaSessionState),
+        );
+        player.addEventListener("loadedmetadata", () => {
+          updateMediaSessionMetadata();
+          updateMediaSessionState();
+        });
+      }
+
       refreshPlaylists().catch((error) => {
         playlistStatus.textContent = error.message;
       });
