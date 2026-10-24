@@ -2299,17 +2299,23 @@
           updateMediaSessionPosition();
         };
 
-        setActionHandler("play", () => {
-          if (castSession || !player.paused) {
+        setActionHandler("play", async () => {
+          if (castSession) {
             return;
           }
-          playPauseButton.click();
+          try {
+            await player.play();
+          } catch (error) {
+            status.textContent = `Could not change playback: ${error.message}`;
+          }
+          updateMediaSessionState();
         });
         setActionHandler("pause", () => {
-          if (castSession || player.paused) {
+          if (castSession) {
             return;
           }
-          playPauseButton.click();
+          player.pause();
+          updateMediaSessionState();
         });
         setActionHandler("stop", () => stopButton.click());
         setActionHandler("previoustrack", () => {
