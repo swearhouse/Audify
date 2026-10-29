@@ -98,8 +98,10 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'id="import-playlist-button"' in response.data
     assert response.data.count(
         b'class="icon-button dialog-close-button" type="button" data-close-dialog'
-    ) == 3
-    assert response.data.count(b'aria-label="Close" title="Close"') == 3
+    ) == 4
+    assert response.data.count(b'aria-label="Close" title="Close"') == 4
+    assert b'id="video-replace-dialog"' in response.data
+    assert b'aria-label", "Replace video"' in response.data
     assert b'button.closest("dialog").close()' in response.data
     editor_dialog = response.data.split(b'<dialog id="playlist-editor"', 1)[1].split(
         b"</dialog>", 1
