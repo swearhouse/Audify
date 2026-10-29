@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings - Bragi</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='bragi.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      rel="stylesheet"
+    >
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0b0e13;
+        color: #edf1f7;
+        --surface: #121720;
+        --border: #252e3c;
+        --muted: #8d9aab;
+        --accent: #8de0bd;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background: radial-gradient(ellipse at 78% 0%, #18232a 0, #0b0e13 48rem);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(640px, 100%);
+        margin: 0 auto;
+        padding: 28px 18px;
+      }
+
+      .settings-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      a.back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 40px;
+        padding: 0.6rem 0.9rem;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: #1b2430;
+        color: #e9eef5;
+        font-weight: 600;
+        text-decoration: none;
+      }
+
+      a.back-link:hover {
+        border-color: #3b4a5d;
+        background: #242f3d;
+      }
+
+      a.back-link:focus-visible,
+      .setting-toggle input:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .settings-card {
+        margin-top: 22px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: var(--surface);
+      }
+
+      .setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 18px 20px;
+      }
+
+      .setting-text {
+        display: grid;
+        gap: 4px;
+      }
+
+      .setting-title {
+        font-weight: 600;
+      }
+
+      .setting-description {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .setting-toggle {
+        position: relative;
+        flex: none;
+        width: 46px;
+        height: 26px;
+      }
+
+      .setting-toggle input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      .setting-toggle .track {
+        position: absolute;
+        inset: 0;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: #1b2430;
+        pointer-events: none;
+        transition: background-color 120ms ease;
+      }
+
+      .setting-toggle .track::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #e9eef5;
+        transition: transform 120ms ease;
+      }
+
+      .setting-toggle input:checked + .track {
+        border-color: #4a8d75;
+        background: #2f6b55;
+      }
+
+      .setting-toggle input:checked + .track::after {
+        transform: translateX(20px);
+      }
+
+      #settings-status {
+        min-height: 20px;
+        margin: 12px 4px 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="settings-heading">
+        <h1>Settings</h1>
+        <a class="back-link" href="{{ url_for('index') }}">
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+          <span>Back to player</span>
+        </a>
+      </div>
+      <section class="settings-card" aria-label="Playback settings">
+        <label class="setting-row" for="loudness-normalization">
+          <span class="setting-text">
+            <span class="setting-title">Loudness normalization</span>
+            <span class="setting-description">
+              Turn down tracks that YouTube measures as louder than its reference level,
+              so songs play at a similar volume. Quiet tracks are not boosted, and
+              Chromecast playback is not affected.
+            </span>
+          </span>
+          <span class="setting-toggle">
+            <input id="loudness-normalization" type="checkbox" role="switch">
+            <span class="track" aria-hidden="true"></span>
+          </span>
+        </label>
+      </section>
+      <p id="settings-status" role="status" aria-live="polite"></p>
+    </main>
+    <script>
+      const loudnessToggle = document.querySelector("#loudness-normalization");
+      const settingsStatus = document.querySelector("#settings-status");
+      const settingsKey = "audify.loudnessNormalization";
+
+      function readSetting() {
+        try {
+          return localStorage.getItem(settingsKey) !== "off";
+        } catch (error) {
+          return true;
+        }
+      }
+
+      loudnessToggle.checked = readSetting();
+      loudnessToggle.addEventListener("change", () => {
+        try {
+          localStorage.setItem(settingsKey, loudnessToggle.checked ? "on" : "off");
+          settingsStatus.textContent = loudnessToggle.checked
+            ? "Loudness normalization is on."
+            : "Loudness normalization is off.";
+        } catch (error) {
+          settingsStatus.textContent = "Could not save this setting in your browser.";
+        }
+      });
+    </script>
+  </body>
+</html>

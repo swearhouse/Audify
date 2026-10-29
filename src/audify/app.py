@@ -12,6 +12,8 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
+from audify.loudness import LoudnessYoutubeIE, gain_db_from_loudness
+
 
 YOUTUBE_HOSTS = {
     "youtu.be",
@@ -262,7 +264,7 @@ def create_app() -> Flask:
 
         username = session.get("username")
         if not isinstance(username, str):
-            if request.endpoint == "index":
+            if request.endpoint in {"index", "settings"}:
                 return redirect(url_for("login"))
             return jsonify(error="Authentication required."), 401
 
@@ -274,7 +276,7 @@ def create_app() -> Flask:
 
         if not any(user["username"] == username for user in users):
             session.clear()
-            if request.endpoint == "index":
+            if request.endpoint in {"index", "settings"}:
                 return redirect(url_for("login"))
             return jsonify(error="Authentication required."), 401
         return None
@@ -315,6 +317,10 @@ def create_app() -> Flask:
     @app.get("/")
     def index():
         return render_template("index.html", username=session["username"])
+
+    @app.get("/settings")
+    def settings():
+        return render_template("settings.html")
 
     @app.get("/api/playlists")
     def playlists_api():
@@ -682,6 +688,7 @@ def create_app() -> Flask:
         }
         try:
             with YoutubeDL(options) as ydl:
+                ydl.add_info_extractor(LoudnessYoutubeIE())
                 info = ydl.extract_info(url.strip(), download=False)
         except DownloadError:
             app.logger.exception("yt-dlp could not resolve the supplied URL")
@@ -703,6 +710,7 @@ def create_app() -> Flask:
             title=info.get("title") or "YouTube audio",
             audio_url=info["url"],
             content_type=content_type,
+            gain_db=gain_db_from_loudness(info.get("loudness_db")),
         )
 
     return app

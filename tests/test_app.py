@@ -865,7 +865,45 @@ def test_resolve_returns_audio_stream(client):
         "title": "Example",
         "audio_url": "https://audio.example/stream",
         "content_type": "audio/mpeg",
+        "gain_db": None,
     }
+
+
+def test_resolve_returns_gain_from_loudness(client):
+    video_info = {
+        "title": "Example",
+        "url": "https://audio.example/stream",
+        "loudness_db": 6.69,
+    }
+
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = video_info
+        response = client.post(
+            "/api/resolve",
+            json={"url": "https://www.youtube.com/watch?v=example"},
+        )
+
+    assert response.status_code == 200
+    assert response.json["gain_db"] == -6.69
+
+
+def test_settings_page_has_loudness_toggle(client):
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    assert b'id="loudness-normalization"' in response.data
+    assert b'href="/"' in response.data
+
+
+def test_settings_page_requires_login(app):
+    response = app.test_client().get("/settings")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/login")
+
+
+def test_homepage_links_to_settings(client):
+    assert b'id="settings-link"' in client.get("/").data
 
 
 def test_resolve_returns_audio_content_type_from_extension(client):
