@@ -2,8 +2,10 @@ import json
 import logging
 import math
 import os
+import re
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -33,6 +35,9 @@ AUDIO_MIME_TYPES = {
     "webm": "audio/webm",
 }
 PLAYLISTS_LOCK = Lock()
+RESOLVE_LOG_LOCK = Lock()
+RESOLVE_LOG_LIMIT = 200
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 USER_LOCK = Lock()
 DEFAULT_USERS = {
     "users": [
@@ -241,6 +246,48 @@ def write_playlists(path: Path, playlists: dict[str, list[dict]]) -> None:
         raise PlaylistStorageError("Could not save the playlist library.") from error
 
 
+def read_resolve_log(path: Path) -> dict[str, list[dict]]:
+    try:
+        if not path.exists():
+            return {}
+        with path.open(encoding="utf-8") as log_file:
+            log = json.load(log_file)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        logging.getLogger(__name__).exception("Could not read the resolve log")
+        return {}
+    if not isinstance(log, dict):
+        return {}
+    return {
+        username: [entry for entry in entries if isinstance(entry, dict)]
+        for username, entries in log.items()
+        if isinstance(username, str) and isinstance(entries, list)
+    }
+
+
+def write_resolve_log(path: Path, log: dict[str, list[dict]]) -> None:
+    temporary_path = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, delete=False
+        ) as log_file:
+            temporary_path = Path(log_file.name)
+            json.dump(log, log_file, ensure_ascii=False, indent=2)
+            log_file.write("\n")
+        os.replace(temporary_path, path)
+    except OSError:
+        logging.getLogger(__name__).exception("Could not save the resolve log")
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def optional_text(payload: object, key: str, limit: int) -> str | None:
+    value = payload.get(key) if isinstance(payload, dict) else None
+    if isinstance(value, str) and value.strip():
+        return value.strip()[:limit]
+    return None
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     data_directory = Path(
@@ -264,7 +311,7 @@ def create_app() -> Flask:
 
         username = session.get("username")
         if not isinstance(username, str):
-            if request.endpoint in {"index", "settings"}:
+            if request.endpoint in {"index", "settings", "log_page"}:
                 return redirect(url_for("login"))
             return jsonify(error="Authentication required."), 401
 
@@ -276,7 +323,7 @@ def create_app() -> Flask:
 
         if not any(user["username"] == username for user in users):
             session.clear()
-            if request.endpoint in {"index", "settings"}:
+            if request.endpoint in {"index", "settings", "log_page"}:
                 return redirect(url_for("login"))
             return jsonify(error="Authentication required."), 401
         return None
@@ -672,6 +719,48 @@ def create_app() -> Flask:
         }
         return jsonify(video=video)
 
+    def resolve_log_path() -> Path:
+        configured = app.config.get("RESOLVE_LOG_PATH")
+        if configured:
+            return Path(configured)
+        return Path(app.config["PLAYLIST_LIBRARY_PATH"]).parent / "resolve_log.json"
+
+    def record_resolve_failure(url, payload, reason, detail=None):
+        entry = {
+            "id": uuid.uuid4().hex,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "title": optional_text(payload, "title", 200),
+            "playlist": optional_text(payload, "playlist", 200),
+            "url": url.strip()[:500],
+            "reason": reason,
+            "detail": detail,
+        }
+        username = session["username"]
+        with RESOLVE_LOG_LOCK:
+            path = resolve_log_path()
+            log = read_resolve_log(path)
+            log[username] = [entry, *log.get(username, [])][:RESOLVE_LOG_LIMIT]
+            write_resolve_log(path, log)
+
+    @app.get("/log")
+    def log_page():
+        return render_template("log.html")
+
+    @app.get("/api/log")
+    def resolve_log_api():
+        with RESOLVE_LOG_LOCK:
+            log = read_resolve_log(resolve_log_path())
+        return jsonify(entries=log.get(session["username"], []))
+
+    @app.delete("/api/log")
+    def clear_resolve_log():
+        with RESOLVE_LOG_LOCK:
+            path = resolve_log_path()
+            log = read_resolve_log(path)
+            log.pop(session["username"], None)
+            write_resolve_log(path, log)
+        return jsonify(success=True)
+
     @app.post("/api/resolve")
     def resolve():
         payload = request.get_json(silent=True)
@@ -690,11 +779,20 @@ def create_app() -> Flask:
             with YoutubeDL(options) as ydl:
                 ydl.add_info_extractor(LoudnessYoutubeIE())
                 info = ydl.extract_info(url.strip(), download=False)
-        except DownloadError:
+        except DownloadError as error:
             app.logger.exception("yt-dlp could not resolve the supplied URL")
+            record_resolve_failure(
+                url,
+                payload,
+                "Could not resolve audio for that URL.",
+                ANSI_ESCAPE.sub("", str(error)).strip()[:500] or None,
+            )
             return jsonify(error="Could not resolve audio for that URL."), 422
 
         if not info or not info.get("url"):
+            record_resolve_failure(
+                url, payload, "No playable audio stream was found."
+            )
             return jsonify(error="No playable audio stream was found."), 422
 
         content_type = info.get("mime_type")

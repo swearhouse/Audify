@@ -902,6 +902,118 @@ def test_settings_page_requires_login(app):
     assert response.headers["Location"].endswith("/login")
 
 
+def test_log_page_requires_login(app):
+    response = app.test_client().get("/log")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/login")
+
+
+def test_log_api_requires_login(app):
+    assert app.test_client().get("/api/log").status_code == 401
+    assert app.test_client().delete("/api/log").status_code == 401
+
+
+def test_log_page_and_homepage_link(client):
+    assert b'id="clear-log"' in client.get("/log").data
+    assert b'id="log-link"' in client.get("/").data
+
+
+def test_failed_resolve_is_logged(client):
+    from yt_dlp.utils import DownloadError
+
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.side_effect = (
+            DownloadError("\x1b[0;31mERROR:\x1b[0m Video unavailable")
+        )
+        response = client.post(
+            "/api/resolve",
+            json={
+                "url": "https://www.youtube.com/watch?v=gone",
+                "title": "Gone Song",
+                "playlist": "Favourites",
+            },
+        )
+
+    assert response.status_code == 422
+    entries = client.get("/api/log").json["entries"]
+    assert len(entries) == 1
+    assert entries[0]["title"] == "Gone Song"
+    assert entries[0]["playlist"] == "Favourites"
+    assert entries[0]["url"] == "https://www.youtube.com/watch?v=gone"
+    assert entries[0]["reason"] == "Could not resolve audio for that URL."
+    assert entries[0]["detail"] == "ERROR: Video unavailable"
+    assert entries[0]["timestamp"].endswith("+00:00")
+
+
+def test_stream_not_found_is_logged_without_title(client):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {
+            "title": "No stream"
+        }
+        client.post(
+            "/api/resolve", json={"url": "https://www.youtube.com/watch?v=nostream"}
+        )
+
+    entry = client.get("/api/log").json["entries"][0]
+    assert entry["reason"] == "No playable audio stream was found."
+    assert entry["title"] is None
+    assert entry["detail"] is None
+
+
+def test_successful_resolve_is_not_logged(client):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {
+            "title": "Fine",
+            "url": "https://audio.example/stream",
+        }
+        client.post("/api/resolve", json={"url": "https://www.youtube.com/watch?v=ok"})
+
+    assert client.get("/api/log").json == {"entries": []}
+
+
+def test_log_is_per_user_newest_first_and_clearable(app, client):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {}
+        for name in ("first", "second"):
+            client.post(
+                "/api/resolve",
+                json={"url": f"https://www.youtube.com/watch?v={name}", "title": name},
+            )
+
+    assert [e["title"] for e in client.get("/api/log").json["entries"]] == [
+        "second",
+        "first",
+    ]
+
+    guest = app.test_client()
+    guest.post("/api/login", json={"username": "quest", "password": "guest"})
+    assert guest.get("/api/log").json == {"entries": []}
+
+    assert client.delete("/api/log").json == {"success": True}
+    assert client.get("/api/log").json == {"entries": []}
+
+
+def test_log_keeps_only_the_latest_entries(client):
+    with patch("audify.app.RESOLVE_LOG_LIMIT", 3), patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {}
+        for number in range(5):
+            client.post(
+                "/api/resolve",
+                json={"url": "https://www.youtube.com/watch?v=x", "title": str(number)},
+            )
+
+    assert [e["title"] for e in client.get("/api/log").json["entries"]] == ["4", "3", "2"]
+
+
+def test_resolve_log_path_defaults_next_to_playlists(app, client, tmp_path):
+    with patch("audify.app.YoutubeDL") as youtube_dl:
+        youtube_dl.return_value.__enter__.return_value.extract_info.return_value = {}
+        client.post("/api/resolve", json={"url": "https://www.youtube.com/watch?v=x"})
+
+    assert (tmp_path / "resolve_log.json").exists()
+
+
 def test_homepage_links_to_settings(client):
     assert b'id="settings-link"' in client.get("/").data
 
