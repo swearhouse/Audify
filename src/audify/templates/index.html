@@ -312,6 +312,16 @@
         cursor: default;
       }
 
+      .video-replace-result-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .video-replace-result-actions > .video-replace-select-button {
+        width: 70px;
+      }
+
       .playlist-video-row[hidden] {
         display: none;
       }
@@ -1278,6 +1288,7 @@
       const videoReplaceLinkSubmit = document.querySelector("#video-replace-link-submit");
       const videoReplaceStatus = document.querySelector("#video-replace-status");
       let replacingRow = null;
+      let pendingReplacements = [];
       let videoReplaceRequest = 0;
       const player = document.querySelector("#player");
       const castButton = document.querySelector("#cast-button");
@@ -2082,6 +2093,9 @@
           videoReplaceDialog.close();
           return;
         }
+        if (row.dataset.videoLink !== video.link) {
+          pendingReplacements.push({ from: row.dataset.videoLink, to: video });
+        }
         row.dataset.videoName = video.name;
         row.dataset.videoLink = video.link;
         const link = row.querySelector(".playlist-video-link");
@@ -2093,7 +2107,89 @@
           `Replaced with "${video.name}". Save the playlist to keep the change.`;
       }
 
+      const previewAudio = new Audio();
+      let previewButton = null;
+      let previewRequest = 0;
+
+      function setPreviewButtonState(button, playing) {
+        if (!button) {
+          return;
+        }
+        button.querySelector(".material-symbols-outlined").textContent =
+          playing ? "pause" : "play_arrow";
+        const label = playing ? "Pause preview" : "Play preview";
+        button.setAttribute("aria-label", label);
+        button.title = label;
+      }
+
+      function stopPreview() {
+        previewRequest += 1;
+        previewAudio.pause();
+        previewAudio.removeAttribute("src");
+        previewAudio.load();
+        setPreviewButtonState(previewButton, false);
+        previewButton = null;
+      }
+
+      async function togglePreview(button, link) {
+        if (previewButton === button) {
+          if (previewAudio.paused) {
+            try {
+              await previewAudio.play();
+              setPreviewButtonState(button, true);
+            } catch (error) {
+              videoReplaceStatus.textContent = "Could not play that preview.";
+            }
+          } else {
+            previewAudio.pause();
+            setPreviewButtonState(button, false);
+          }
+          return;
+        }
+
+        stopPreview();
+        const requestId = previewRequest;
+        previewButton = button;
+        button.disabled = true;
+        videoReplaceStatus.textContent = "Loading preview…";
+        try {
+          const response = await fetch("/api/resolve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: link }),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || "Could not load that preview.");
+          }
+          if (requestId !== previewRequest) {
+            return;
+          }
+          player.pause();
+          previewAudio.src = result.audio_url;
+          await previewAudio.play();
+          if (requestId === previewRequest) {
+            setPreviewButtonState(button, true);
+            videoReplaceStatus.textContent = "";
+          }
+        } catch (error) {
+          if (requestId === previewRequest) {
+            previewButton = null;
+            videoReplaceStatus.textContent = error.message || "Could not play that preview.";
+          }
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      previewAudio.addEventListener("ended", () => {
+        setPreviewButtonState(previewButton, false);
+        previewButton = null;
+      });
+      videoReplaceDialog.addEventListener("close", stopPreview);
+
       function renderReplaceResults(results) {
+        stopPreview();
         videoReplaceResults.replaceChildren();
         results.slice(0, 10).forEach((result) => {
           const item = document.createElement("li");
@@ -2110,13 +2206,24 @@
             ? "Duration unavailable"
             : formatTime(result.duration);
           info.append(title, duration);
+          const playButton = document.createElement("button");
+          playButton.type = "button";
+          playButton.classList.add("icon-button");
+          playButton.innerHTML =
+            '<span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>';
+          setPreviewButtonState(playButton, false);
+          playButton.addEventListener("click", () => togglePreview(playButton, result.link));
           const selectButton = document.createElement("button");
           selectButton.type = "button";
+          selectButton.classList.add("video-replace-select-button");
           selectButton.textContent = "Select";
           selectButton.addEventListener("click", () => {
             applyReplacement({ name: result.name, link: result.link });
           });
-          item.append(info, selectButton);
+          const actions = document.createElement("div");
+          actions.classList.add("video-replace-result-actions");
+          actions.append(playButton, selectButton);
+          item.append(info, actions);
           videoReplaceResults.append(item);
         });
       }
@@ -2130,6 +2237,7 @@
           return;
         }
         const requestId = ++videoReplaceRequest;
+        stopPreview();
         videoReplaceSearchSubmit.disabled = true;
         videoReplaceStatus.textContent = "Searching YouTube…";
         videoReplaceResults.replaceChildren();
@@ -2209,6 +2317,7 @@
         playlistNameInput.value = playlist ? playlist.name : "";
         playlistVideoSearch.value = "";
         playlistEditorStatus.textContent = "";
+        pendingReplacements = [];
         playlistVideoFields.replaceChildren();
         (playlist ? playlist.videos : [])
           .forEach(addVideoEditorRow);
@@ -2345,8 +2454,17 @@
           deletePlaylistButton.hidden = false;
           if (currentPlaylistId === result.playlist.id) {
             currentPlaylistTitle = result.playlist.name;
+            pendingReplacements.forEach(({ from, to }) => {
+              const track = tracks.find((candidate) => candidate.url === from);
+              if (track) {
+                track.title = to.name;
+                track.url = to.link;
+              }
+            });
+            renderTracks();
             playlistTitle.textContent = `${currentPlaylistTitle} (${tracks.length} songs)`;
           }
+          pendingReplacements = [];
           let refreshError = null;
           try {
             await refreshPlaylists();
