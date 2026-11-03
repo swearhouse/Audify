@@ -1344,10 +1344,9 @@
       const audioLoadError = "The audio stream could not be loaded.";
       const currentThumbnail = document.querySelector("#current-thumbnail");
       const logoutButton = document.querySelector("#logout-button");
-      const ambientColors = ["#241f2a", "#1e2925", "#29231f", "#202734", "#192a2a", "#27232a"];
       let tracks = [];
       let currentIndex = -1;
-      let ambientColorIndex = -1;
+      let ambientHue = -1;
       let playbackRequest = 0;
       let cancelMetadataWait = null;
       let currentPlaylistTitle = "";
@@ -1780,8 +1779,15 @@
       });
 
       function shiftAmbientColor() {
-        ambientColorIndex = (ambientColorIndex + 1) % ambientColors.length;
-        const ambientColor = ambientColors[ambientColorIndex];
+        // Pick a hue noticeably different from the previous one; keep it dark and muted for readability.
+        let hue;
+        do {
+          hue = Math.floor(Math.random() * 360);
+        } while (ambientHue >= 0 && Math.min(Math.abs(hue - ambientHue), 360 - Math.abs(hue - ambientHue)) < 40);
+        ambientHue = hue;
+        const saturation = 25 + Math.floor(Math.random() * 16);
+        const lightness = 14 + Math.floor(Math.random() * 6);
+        const ambientColor = `hsl(${hue} ${saturation}% ${lightness}%)`;
         document.body.style.setProperty("--ambient-color", ambientColor);
         player.style.setProperty("--ambient-color", ambientColor);
         seekSlider.style.setProperty("--ambient-color", ambientColor);
