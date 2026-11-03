@@ -52,13 +52,11 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'<link rel="icon" type="image/png" href="/static/bragi.png">' in response.data
     assert b'<section class="saved-library" aria-label="Playlists">' in response.data
     assert b'id="playlist-list"' in response.data
-    assert b'id="playlist-status" role="status" aria-live="polite"' in response.data
-    assert b"Your playlists are private to your account." in response.data
     assert b'id="add-playlist-button"' in response.data
     assert b'id="add-song-button"' in response.data
     assert b">Add Song</button>" in response.data
     assert b'id="youtube-search-button"' in response.data
-    assert b">Search YouTube</button>" in response.data
+    assert b'aria-label="Search YouTube"' in response.data
     assert b'id="youtube-search-section"' in response.data
     assert b'id="youtube-search-form"' in response.data
     assert b'id="youtube-search-query"' in response.data

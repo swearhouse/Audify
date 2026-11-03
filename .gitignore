@@ -6,3 +6,4 @@ __pycache__/
 build/
 dist/
 instance/user_playlists.json
+instance/resolve_log.json
