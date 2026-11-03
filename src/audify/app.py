@@ -180,6 +180,30 @@ def validate_videos(value: object) -> list[dict[str, str]] | None:
     return videos
 
 
+def validate_replacements(value: object) -> dict[str, dict[str, str]] | None:
+    if not isinstance(value, list) or len(value) > 5000:
+        return None
+
+    replacements = {}
+    for replacement in value:
+        if (
+            not isinstance(replacement, dict)
+            or set(replacement) != {"from", "to"}
+            or not isinstance(replacement.get("from"), str)
+        ):
+            return None
+        from_id = get_youtube_video_id(replacement["from"])
+        videos = validate_videos([replacement.get("to")])
+        if from_id is None or videos is None:
+            return None
+        video = videos[0]
+        if from_id in replacements and replacements[from_id] != video:
+            return None
+        replacements[from_id] = video
+
+    return replacements
+
+
 def read_playlists(path: Path) -> dict[str, list[dict]]:
     try:
         if not path.exists():
@@ -553,13 +577,21 @@ def create_app() -> Flask:
         payload = request.get_json(silent=True)
         name = payload.get("name") if isinstance(payload, dict) else None
         videos = validate_videos(payload.get("videos")) if isinstance(payload, dict) else None
+        replacements = (
+            validate_replacements(payload.get("replacements", []))
+            if isinstance(payload, dict)
+            else None
+        )
         if (
             not isinstance(name, str)
             or not name.strip()
             or len(name.strip()) > 200
             or videos is None
+            or replacements is None
         ):
-            return jsonify(error="Provide a playlist name and valid video list."), 400
+            return jsonify(
+                error="Provide a playlist name, valid video list, and valid replacements."
+            ), 400
 
         try:
             with PLAYLISTS_LOCK:
@@ -575,6 +607,31 @@ def create_app() -> Flask:
                 )
                 if playlist is None:
                     return jsonify(error="Playlist was not found."), 404
+                original_video_ids = {
+                    get_youtube_video_id(video["link"])
+                    for video in playlist["videos"]
+                }
+                submitted_video_ids = {
+                    get_youtube_video_id(video["link"]) for video in videos
+                }
+                if any(
+                    from_id not in original_video_ids
+                    or get_youtube_video_id(video["link"]) not in submitted_video_ids
+                    for from_id, video in replacements.items()
+                ):
+                    return jsonify(
+                        error="One or more replacements do not match the playlist."
+                    ), 400
+
+                for user_playlist in playlists:
+                    if "id" not in user_playlist:
+                        continue
+                    user_playlist["videos"] = [
+                        replacements.get(
+                            get_youtube_video_id(video["link"]), video
+                        )
+                        for video in user_playlist["videos"]
+                    ]
                 playlist["name"] = name.strip()
                 playlist["videos"] = videos
                 write_playlists(path, libraries)

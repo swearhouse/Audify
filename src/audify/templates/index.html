@@ -14,7 +14,7 @@
     <style>
       @property --ambient-color {
         syntax: "<color>";
-        inherits: false;
+        inherits: true;
         initial-value: #18232a;
       }
 
@@ -629,7 +629,8 @@
       }
 
       #current-thumbnail[hidden] {
-        display: none;
+        display: block;
+        visibility: hidden;
       }
 
       .now-playing-info {
@@ -801,11 +802,14 @@
       }
 
       #tracks {
+        grid-template-columns: minmax(0, 1fr);
         margin: 0;
+        overflow-x: hidden;
       }
 
       #tracks li {
         display: flex;
+        min-width: 0;
         align-items: center;
         gap: 4px;
       }
@@ -836,9 +840,7 @@
       }
 
       #tracks button {
-        display: flex;
-        align-items: center;
-        gap: 12px;
+        display: block;
         border-color: transparent;
         background: transparent;
         color: #aeb9c8;
@@ -855,21 +857,29 @@
       }
 
       #tracks .track-select::before {
+        display: inline-block;
         width: 22px;
+        margin-right: 12px;
         color: #738195;
         content: attr(data-track-number);
         font-size: 12px;
         text-align: center;
       }
 
+      #tracks button:hover {
+        border-color: #3b4a5d;
+        background: #242f3d;
+        color: #edf1f7;
+      }
+
       #tracks button[aria-current="true"] {
-        border-color: #283a36;
-        background: #17251f;
-        color: #b8f0d5;
+        border-color: color-mix(in srgb, var(--ambient-color) 70%, white 20%);
+        background: color-mix(in srgb, var(--ambient-color) 85%, white 15%);
+        color: #edf1f7;
       }
 
       #tracks button[aria-current="true"]::before {
-        color: var(--accent);
+        color: #edf1f7;
       }
 
       #playlist-list li {
@@ -1778,6 +1788,37 @@
         volumeSlider.style.setProperty("--ambient-color", ambientColor);
       }
 
+      const userScrollPauseMs = 5000;
+      let autoScrollTimer = null;
+
+      function centerCurrentTrack() {
+        clearTimeout(autoScrollTimer);
+        autoScrollTimer = null;
+        const button = trackList.querySelector('button[aria-current="true"]');
+        if (!button) {
+          return;
+        }
+        const listRect = trackList.getBoundingClientRect();
+        const buttonRect = button.getBoundingClientRect();
+        const offset = buttonRect.top - listRect.top + trackList.scrollTop;
+        const top = offset - (trackList.clientHeight - buttonRect.height) / 2;
+        trackList.scrollTo({
+          top: Math.max(0, top),
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth",
+        });
+      }
+
+      function pauseAutoScroll() {
+        clearTimeout(autoScrollTimer);
+        autoScrollTimer = setTimeout(centerCurrentTrack, userScrollPauseMs);
+      }
+
+      ["wheel", "touchmove", "pointerdown", "keydown"].forEach((type) =>
+        trackList.addEventListener(type, pauseAutoScroll, { passive: true })
+      );
+
       function selectTrack(index) {
         if (index >= 0 && index < tracks.length && index !== currentIndex) {
           shiftAmbientColor();
@@ -1807,7 +1848,11 @@
           button.textContent = track.title;
           button.setAttribute("data-track-number", String(index + 1));
           button.setAttribute("aria-current", String(index === currentIndex));
-          button.addEventListener("click", () => selectTrack(index));
+          button.addEventListener("click", () => {
+            clearTimeout(autoScrollTimer);
+            autoScrollTimer = null;
+            selectTrack(index);
+          });
           item.append(button);
           trackList.append(item);
         });
@@ -1882,6 +1927,9 @@
         currentIndex = index;
         resolvedMedia = null;
         renderTracks();
+        if (autoScrollTimer === null) {
+          centerCurrentTrack();
+        }
         clearPlayer();
         currentThumbnail.hidden = true;
         currentThumbnail.removeAttribute("src");
@@ -1969,6 +2017,20 @@
         }
       }
 
+      function youtubeThumbnailUrl(link) {
+        try {
+          const url = new URL(link);
+          const videoId = url.hostname === "youtu.be"
+            ? url.pathname.slice(1)
+            : url.searchParams.get("v");
+          return videoId && /^[\w-]{6,}$/.test(videoId)
+            ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+            : null;
+        } catch {
+          return null;
+        }
+      }
+
       function loadPlaylist(playlist) {
         showYoutubeSearch(false);
         const playbackContinues = castSession
@@ -1978,7 +2040,7 @@
         tracks = playlist.videos.map((video) => ({
           title: video.name,
           url: video.link,
-          thumbnail_url: null,
+          thumbnail_url: youtubeThumbnailUrl(video.link),
         }));
         currentIndex = -1;
         playlistSearch.value = "";
@@ -2028,7 +2090,7 @@
             tracks = [{
               title: result.name,
               url: result.link,
-              thumbnail_url: null,
+              thumbnail_url: youtubeThumbnailUrl(result.link),
             }];
             currentIndex = -1;
             currentPlaylistTitle = result.name;
@@ -2164,7 +2226,18 @@
           return;
         }
         if (row.dataset.videoLink !== video.link) {
-          pendingReplacements.push({ from: row.dataset.videoLink, to: video });
+          const pendingReplacement = pendingReplacements.find(
+            (replacement) => replacement.row === row,
+          );
+          if (pendingReplacement) {
+            pendingReplacement.to = video;
+          } else {
+            pendingReplacements.push({
+              from: row.dataset.videoLink,
+              to: video,
+              row,
+            });
+          }
         }
         row.dataset.videoName = video.name;
         row.dataset.videoLink = video.link;
@@ -2505,6 +2578,11 @@
           playlistVideoFields.querySelectorAll(".playlist-video-row"),
           (row) => ({ name: row.dataset.videoName, link: row.dataset.videoLink }),
         );
+        const replacements = editingPlaylistId
+          ? pendingReplacements
+            .filter(({ row }) => row.isConnected)
+            .map(({ from, to }) => ({ from, to }))
+          : [];
         const method = editingPlaylistId ? "PUT" : "POST";
         const endpoint = editingPlaylistId
           ? `/api/playlists/${encodeURIComponent(editingPlaylistId)}`
@@ -2513,7 +2591,11 @@
           const response = await fetch(endpoint, {
             method,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: playlistNameInput.value.trim(), videos }),
+            body: JSON.stringify({
+              name: playlistNameInput.value.trim(),
+              videos,
+              replacements,
+            }),
           });
           const result = await response.json();
           if (!response.ok) {
@@ -2524,12 +2606,14 @@
           deletePlaylistButton.hidden = false;
           if (currentPlaylistId === result.playlist.id) {
             currentPlaylistTitle = result.playlist.name;
-            pendingReplacements.forEach(({ from, to }) => {
-              const track = tracks.find((candidate) => candidate.url === from);
-              if (track) {
+            replacements.forEach(({ from, to }) => {
+              tracks.forEach((track) => {
+                if (track.url !== from) {
+                  return;
+                }
                 track.title = to.name;
                 track.url = to.link;
-              }
+              });
             });
             renderTracks();
             playlistTitle.textContent = `${currentPlaylistTitle} (${tracks.length} songs)`;
@@ -2548,7 +2632,9 @@
             playlistStatus.textContent =
               `Playlist saved, but the playlist list could not refresh: ${refreshError.message}`;
           } else if (closeEditor) {
-            playlistStatus.textContent = "Playlist saved.";
+            playlistStatus.textContent = replacements.length
+              ? "Playlist saved; song replacements updated across your playlists."
+              : "Playlist saved.";
           }
           return result.playlist;
         } finally {

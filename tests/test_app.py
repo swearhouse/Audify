@@ -404,6 +404,129 @@ def test_playlist_can_be_edited_and_deleted(client):
     assert deleted.json == {"playlists": []}
 
 
+def test_replacing_song_updates_every_matching_song_in_users_playlists(app, client):
+    old_song = {"name": "Old song", "link": "https://youtu.be/song-id"}
+    replacement = {
+        "name": "Replacement song",
+        "link": "https://www.youtube.com/watch?v=replacement-id",
+    }
+    source = client.post(
+        "/api/playlists",
+        json={"name": "Source", "videos": [old_song]},
+    ).json["playlist"]
+    other = client.post(
+        "/api/playlists",
+        json={
+            "name": "Other",
+            "videos": [
+                {
+                    "name": "Old song copy",
+                    "link": "https://www.youtube.com/watch?v=song-id",
+                },
+                {"name": "Another copy", "link": "https://youtu.be/song-id"},
+                {"name": "Unrelated song", "link": "https://youtu.be/other-id"},
+            ],
+        },
+    ).json["playlist"]
+    unrelated = client.post(
+        "/api/playlists",
+        json={"name": "Unrelated", "videos": []},
+    ).json["playlist"]
+
+    guest_client = app.test_client()
+    guest_client.post("/api/login", json={"username": "quest", "password": "guest"})
+    guest = guest_client.post(
+        "/api/playlists",
+        json={"name": "Guest", "videos": [old_song]},
+    ).json["playlist"]
+
+    response = client.put(
+        f"/api/playlists/{source['id']}",
+        json={
+            "name": source["name"],
+            "videos": [replacement],
+            "replacements": [{"from": old_song["link"], "to": replacement}],
+        },
+    )
+
+    assert response.status_code == 200
+    saved = client.get("/api/playlists").json["playlists"]
+    assert saved == [
+        {**source, "videos": [replacement]},
+        {
+            **other,
+            "videos": [
+                replacement,
+                replacement,
+                other["videos"][2],
+            ],
+        },
+        unrelated,
+    ]
+    assert guest_client.get("/api/playlists").json["playlists"] == [guest]
+    stored = json.loads(
+        app.config["PLAYLIST_LIBRARY_PATH"].read_text(encoding="utf-8")
+    )
+    assert stored["admin"] == saved
+    assert stored["quest"] == [guest]
+
+
+@pytest.mark.parametrize(
+    "replacements",
+    [
+        [
+            {
+                "from": "https://youtu.be/not-in-source",
+                "to": {
+                    "name": "Replacement",
+                    "link": "https://youtu.be/replacement",
+                },
+            }
+        ],
+        [
+            {
+                "from": "https://youtu.be/song",
+                "to": {
+                    "name": "First replacement",
+                    "link": "https://youtu.be/first",
+                },
+            },
+            {
+                "from": "https://www.youtube.com/watch?v=song",
+                "to": {
+                    "name": "Second replacement",
+                    "link": "https://youtu.be/second",
+                },
+            },
+        ],
+    ],
+)
+def test_playlist_replacement_rejects_invalid_mappings_atomically(
+    client, app, replacements
+):
+    song = {"name": "Song", "link": "https://youtu.be/song"}
+    playlist = client.post(
+        "/api/playlists",
+        json={"name": "Mix", "videos": [song]},
+    ).json["playlist"]
+
+    response = client.put(
+        f"/api/playlists/{playlist['id']}",
+        json={
+            "name": "Changed",
+            "videos": [{"name": "New", "link": "https://youtu.be/new"}],
+            "replacements": replacements,
+        },
+    )
+
+    assert response.status_code == 400
+    assert client.get("/api/playlists").json["playlists"] == [playlist]
+    stored = json.loads(
+        app.config["PLAYLIST_LIBRARY_PATH"].read_text(encoding="utf-8")
+    )
+    assert stored["admin"] == [playlist]
+
+
 def test_song_can_be_added_to_multiple_playlists(client, app):
     first = client.post(
         "/api/playlists",
