@@ -46,10 +46,12 @@ def test_accepts_only_direct_youtube_video_links():
 
 def test_homepage_renders_playlist_library_and_player(client):
     response = client.get("/")
+    css = client.get("/static/css/index.css").data
+    js = client.get("/static/js/index.js").data.replace(b"\r\n", b"\n")
 
     assert response.status_code == 200
+    assert b'href="/static/css/index.css"' in response.data
     assert b"<title>Bragi</title>" in response.data
-    assert b'<link rel="icon" type="image/png" href="/static/bragi.png">' in response.data
     assert b'<section class="saved-library" aria-label="Playlists">' in response.data
     assert b'id="playlist-list"' in response.data
     assert b'id="add-playlist-button"' in response.data
@@ -61,36 +63,38 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'id="youtube-search-form"' in response.data
     assert b'id="youtube-search-query"' in response.data
     assert b'id="youtube-search-results"' in response.data
+    assert b'<link rel="icon" type="image/png" href="/static/bragi.png">' in response.data
     assert b".youtube-search-thumbnail" not in response.data
-    assert b'createElement("img")' not in response.data.split(
+    assert b".youtube-search-thumbnail" not in css
+    assert b'createElement("img")' not in js.split(
         b"function renderYoutubeSearchResults(results)", 1
     )[1].split(b"async function searchYoutube", 1)[0]
     assert b'id="youtube-search-section" class="queue-card"' in response.data
-    assert b'fetch("/api/youtube/search"' in response.data
+    assert b'fetch("/api/youtube/search"' in js
     assert b'ytsearch30:' not in response.data
-    assert b"function showYoutubeSearch(showSearch)" in response.data
-    assert b"function loadPlaylist(playlist) {\n        showYoutubeSearch(false);" in response.data
-    assert b"function renderYoutubeSearchResults(results)" in response.data
-    search_renderer = response.data.split(
+    assert b"function showYoutubeSearch(showSearch)" in js
+    assert b"function loadPlaylist(playlist) {\n  showYoutubeSearch(false);" in js
+    assert b"function renderYoutubeSearchResults(results)" in js
+    search_renderer = js.split(
         b"function renderYoutubeSearchResults(results)", 1
     )[1].split(b"async function searchYoutube", 1)[0]
     assert b'createElement("span")' in search_renderer
     assert b'createElement("a")' not in search_renderer
     assert b"title.href = result.link;" not in search_renderer
-    assert b'addButton.textContent = "Add to playlist";' in response.data
-    assert b".youtube-search-result-title" in response.data
-    assert b"text-overflow: ellipsis;" in response.data
-    assert b"width: 100px;" in response.data
-    assert b"justify-self: end;" in response.data
-    assert b"min-height: 28px;" in response.data
-    assert b"padding: 0.2rem 0.4rem;" in response.data
-    assert b"font-size: 11px;" in response.data
-    assert b"item.addEventListener(\"click\", (event) => {" in response.data
-    assert b"if (event.target.closest(\"button\")) {" in response.data
-    assert b"selectTrack(0);" in response.data
-    assert b"event.stopPropagation();" in response.data
-    assert b"openAddSongDialog({ name: result.name, link: result.link });" in response.data
-    assert b"videoAddUrl.required = !song;" in response.data
+    assert b'addButton.textContent = "Add to playlist";' in js
+    assert b".youtube-search-result-title" in css
+    assert b"text-overflow: ellipsis;" in css
+    assert b"width: 100px;" in css
+    assert b"justify-self: end;" in css
+    assert b"min-height: 28px;" in css
+    assert b"padding: 0.2rem 0.4rem;" in css
+    assert b"font-size: 11px;" in css
+    assert b"item.addEventListener(\"click\", (event) => {" in js
+    assert b"if (event.target.closest(\"button\")) {" in js
+    assert b"selectTrack(0);" in js
+    assert b"event.stopPropagation();" in js
+    assert b"openAddSongDialog({ name: result.name, link: result.link });" in js
+    assert b"videoAddUrl.required = !song;" in js
     assert b'id="playlist-editor-form"' in response.data
     assert b'id="delete-playlist-button"' in response.data
     assert b'id="import-playlist-button"' in response.data
@@ -99,8 +103,8 @@ def test_homepage_renders_playlist_library_and_player(client):
     ) == 4
     assert response.data.count(b'aria-label="Close" title="Close"') == 4
     assert b'id="video-replace-dialog"' in response.data
-    assert b'aria-label", "Replace video"' in response.data
-    assert b'button.closest("dialog").close()' in response.data
+    assert b'aria-label", "Replace video"' in js
+    assert b'button.closest("dialog").close()' in js
     editor_dialog = response.data.split(b'<dialog id="playlist-editor"', 1)[1].split(
         b"</dialog>", 1
     )[0]
@@ -108,12 +112,12 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'id="import-playlist-button"' in editor_dialog
     assert b'id="playlist-video-search"' in editor_dialog
     assert b'aria-label="Search videos in this playlist"' in editor_dialog
-    assert b".playlist-video-row[hidden] {\n        display: none;" in response.data
+    assert b".playlist-video-row[hidden] {\n  display: none;" in css.replace(b"\r\n", b"\n")
     assert b'id="add-video-button"' not in editor_dialog
     assert response.data.index(b'id="add-song-button"') < response.data.index(
         b'id="add-playlist-button"'
     )
-    assert b"deletePlaylistButton.hidden = !playlist;" in response.data
+    assert b"deletePlaylistButton.hidden = !playlist;" in js
     assert b"deleteButton.addEventListener" not in response.data
     assert b'<button id="import-playlist-button"' not in response.data.split(
         b'<dialog id="playlist-editor"', 1
@@ -124,37 +128,37 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'<h2 id="video-add-heading">Add Song</h2>' in response.data
     assert b'id="song-playlist-choices"' in response.data
     assert b'id="song-playlist-options"' in response.data
-    assert b'checkbox.name = "playlist";' in response.data
-    assert b'fetch("/api/videos/title"' in response.data
-    assert b'fetch("/api/playlists/add-song"' in response.data
+    assert b'checkbox.name = "playlist";' in js
+    assert b'fetch("/api/videos/title"' in js
+    assert b'fetch("/api/playlists/add-song"' in js
     assert (
         b'throw new Error(result.error || "Could not add the song to those playlists.");'
-        in response.data
+        in js
     )
-    assert b'const videoLink = document.createElement("a");' in response.data
-    assert b"videoLink.href = video.link;" in response.data
-    assert b"videoLink.textContent = video.name;" in response.data
-    assert b"row.dataset.videoName = video.name;" in response.data
-    assert b"row.dataset.videoLink = video.link;" in response.data
-    assert b"filterPlaylistVideoRows();" in response.data
+    assert b'const videoLink = document.createElement("a");' in js
+    assert b"videoLink.href = video.link;" in js
+    assert b"videoLink.textContent = video.name;" in js
+    assert b"row.dataset.videoName = video.name;" in js
+    assert b"row.dataset.videoLink = video.link;" in js
+    assert b"filterPlaylistVideoRows();" in js
     assert (
         b"row.hidden = !row.dataset.videoName.toLocaleLowerCase().includes(query);"
-        in response.data
+        in js
     )
-    assert b'playlistVideoFields.querySelectorAll(".playlist-video-row")' in response.data
-    assert b"row.dataset.videoName, link: row.dataset.videoLink" in response.data
-    assert b'playlistVideoSearch.addEventListener("input", filterPlaylistVideoRows);' in response.data
-    assert b"async function persistPlaylist(closeEditor)" in response.data
-    assert b"async function addSongToSelectedPlaylists(event)" in response.data
-    assert b"Select at least one playlist." in response.data
-    assert b'addSongButton.addEventListener("click", () => openAddSongDialog());' in response.data
-    assert b'fetch("/api/playlists/import"' in response.data
-    assert b'fetch("/api/playlists")' in response.data
-    assert b"video.name" in response.data
-    assert b"video.link" in response.data
+    assert b'playlistVideoFields.querySelectorAll(".playlist-video-row")' in js
+    assert b"row.dataset.videoName, link: row.dataset.videoLink" in js
+    assert b'playlistVideoSearch.addEventListener("input", filterPlaylistVideoRows);' in js
+    assert b"async function persistPlaylist(closeEditor)" in js
+    assert b"async function addSongToSelectedPlaylists(event)" in js
+    assert b"Select at least one playlist." in js
+    assert b'addSongButton.addEventListener("click", () => openAddSongDialog());' in js
+    assert b'fetch("/api/playlists/import"' in js
+    assert b'fetch("/api/playlists")' in js
+    assert b"video.name" in js
+    assert b"video.link" in js
     assert b'fetch("/api/playlist"' not in response.data
     assert b'fetch("/api/saved-playlists"' not in response.data
-    assert b'fetch("/api/playlists"' in response.data
+    assert b'fetch("/api/playlists"' in js
     assert b'id="tracks"' in response.data
     assert b'id="play-pause-button"' in response.data
     assert b'id="cast-button"' in response.data
@@ -162,12 +166,12 @@ def test_homepage_renders_playlist_library_and_player(client):
     assert b'aria-label="Shuffle"' in response.data
     assert b'title="Shuffle"' in response.data
     assert b'aria-hidden="true">shuffle</span></button>' in response.data
-    assert b"function shuffleTracks()" in response.data
-    assert b"shuffleButton.addEventListener(\"click\", shuffleTracks);" in response.data
-    assert b"function selectTrack(index)" in response.data
-    assert b"function advanceTrack(index)" in response.data
-    assert b"const maxAudioLoadRetries = 2;" in response.data
-    assert b"remotePlayerController.seek();" in response.data
+    assert b"function shuffleTracks()" in js
+    assert b"shuffleButton.addEventListener(\"click\", shuffleTracks);" in js
+    assert b"function selectTrack(index)" in js
+    assert b"function advanceTrack(index)" in js
+    assert b"const maxAudioLoadRetries = 2;" in js
+    assert b"remotePlayerController.seek();" in js
 
 
 def test_homepage_requires_login(app):

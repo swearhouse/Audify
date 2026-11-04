@@ -4,13 +4,24 @@ import math
 import os
 import re
 import tempfile
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
@@ -817,6 +828,44 @@ def create_app() -> Flask:
             log.pop(session["username"], None)
             write_resolve_log(path, log)
         return jsonify(success=True)
+
+    @app.get("/api/audio-proxy")
+    def audio_proxy():
+        # Googlevideo sends no CORS headers, which blocks Web Audio analysis of the stream.
+        target = request.args.get("url", "")
+        parts = urlsplit(target)
+        host = parts.hostname or ""
+        if parts.scheme != "https" or not (
+            host == "googlevideo.com" or host.endswith(".googlevideo.com")
+        ):
+            return jsonify(error="Unsupported audio URL."), 400
+
+        upstream_request = urllib.request.Request(target)
+        if request.headers.get("Range"):
+            upstream_request.add_header("Range", request.headers["Range"])
+        try:
+            upstream = urllib.request.urlopen(upstream_request, timeout=15)
+        except urllib.error.HTTPError as error:
+            return jsonify(error="The audio stream could not be loaded."), error.code
+        except (urllib.error.URLError, OSError):
+            return jsonify(error="The audio stream could not be loaded."), 502
+
+        def stream():
+            try:
+                while chunk := upstream.read(64 * 1024):
+                    yield chunk
+            finally:
+                upstream.close()
+
+        response = Response(
+            stream(),
+            status=upstream.status,
+            content_type=upstream.headers.get("Content-Type", "audio/mpeg"),
+        )
+        for header in ("Content-Length", "Content-Range", "Accept-Ranges"):
+            if upstream.headers.get(header):
+                response.headers[header] = upstream.headers[header]
+        return response
 
     @app.post("/api/resolve")
     def resolve():

@@ -1,13 +1,1 @@
-{
-  "admin": [
-    {
-      "id": "9b006a5f661c4f3880d5f14925b51ac1",
-      "timestamp": "2026-11-03T20:43:43+00:00",
-      "title": "Noisia - Machine Gun (Official Video)",
-      "playlist": "Drzn-Liked",
-      "url": "https://www.youtube.com/watch?v=SAO-lzl3vVQ",
-      "reason": "Could not resolve audio for that URL.",
-      "detail": "ERROR: [youtube] SAO-lzl3vVQ: Sign in to confirm your age. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies"
-    }
-  ]
-}
+{}
